@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CENSYS — Community Fire Early-Warning System</title>
+  <meta name="description" content="CENSYS Fire Monitoring System — Real-time node-based fire detection for barangays in Cebu City.">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .hero__logo {
+      width: 80px;
+      height: 80px;
+      background: var(--brand);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      box-shadow: 0 8px 32px rgba(37, 99, 235, 0.25);
+    }
+    .hero__logo svg {
+      width: 44px;
+      height: 44px;
+      fill: white;
+    }
+    .hero__title {
+      font-size: clamp(32px, 5vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      line-height: 1.15;
+      color: var(--text-primary);
+    }
+    .hero__title span {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero__sub {
+      margin-top: 12px;
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 520px;
+    }
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+      margin-top: 48px;
+      width: min(680px, 100%);
+    }
+    .role-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px 28px;
+      cursor: pointer;
+      transition: all 0.25s var(--ease);
+      text-align: center;
+      text-decoration: none;
+      color: inherit;
+    }
+    .role-card:hover {
+      border-color: var(--brand);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-4px);
+    }
+    .role-card__icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 18px;
+      font-size: 28px;
+    }
+    .role-card__icon--fire {
+      background: #fef2f2;
+      color: var(--fire);
+    }
+    .role-card__icon--brgy {
+      background: #eff6ff;
+      color: var(--brand);
+    }
+    .role-card__title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .role-card__desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .hero__footer {
+      margin-top: 64px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <main class="hero">
+    <div class="hero__logo">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+    </div>
+    <h1 class="hero__title">
+      Welcome to <span>CENSYS</span>
+    </h1>
+    <p class="hero__sub">
+      Community-based Early-warning Network System — Real-time fire monitoring for Cebu City barangays.
+    </p>
+
+    <div class="role-grid">
+      <a href="login-firestation.html" class="role-card" id="role-firestation">
+        <div class="role-card__icon role-card__icon--fire">🚒</div>
+        <div class="role-card__title">Fire Station</div>
+        <div class="role-card__desc">
+          San Nicolas Fire Substation dashboard — monitor all barangays, manage fire alarms.
+        </div>
+      </a>
+
+      <a href="login-barangay.html" class="role-card" id="role-barangay">
+        <div class="role-card__icon role-card__icon--brgy">🏘️</div>
+        <div class="role-card__title">Barangay Personnel</div>
+        <div class="role-card__desc">
+          Access your barangay's sensor nodes, view map positions and real-time data.
+        </div>
+      </a>
+    </div>
+
+    <div class="hero__footer">
+      CENSYS Technologies Inc. &copy; 2026 — Cebu City, Philippines
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CENSYS — San Nicolas Fire Substation Dashboard</title>
+  <meta name="description" content="Fire station command dashboard — real-time monitoring of all barangays, fire alarms, and BFP alarm levels.">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .page-content {
+      padding: 24px 0 40px;
+    }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title__icon {
+      font-size: 22px;
+    }
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .brgy-tile {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px 24px;
+      cursor: pointer;
+      transition: all 0.25s var(--ease);
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      position: relative;
+      overflow: hidden;
+    }
+    .brgy-tile:hover {
+      border-color: var(--brand);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-3px);
+    }
+    .brgy-tile__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .brgy-tile__name {
+      font-size: 19px;
+      font-weight: 700;
+    }
+    .brgy-tile__city {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .brgy-tile__stats {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .brgy-tile__stat {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .brgy-tile__stat-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .brgy-tile--has-fire {
+      border-color: var(--fire-border);
+      animation: tile-fire-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes tile-fire-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+      50% { box-shadow: 0 0 24px rgba(220,38,38,0.15); }
+    }
+    .brgy-tile__node-count {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+    .alarm-section {
+      margin-bottom: 24px;
+    }
+    .alarm-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    @media (max-width: 640px) {
+      .alarm-info { grid-template-columns: 1fr; }
+    }
+    .alarm-protocol {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .alarm-protocol__title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .alarm-protocol__list {
+      list-style: none;
+      padding: 0;
+    }
+    .alarm-protocol__list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-light);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .alarm-protocol__list li:last-child {
+      border-bottom: none;
+    }
+    .alarm-protocol__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .alarm-protocol__active {
+      font-weight: 700;
+    }
+    .silence-btn-area {
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <!-- NAVBAR -->
+    <nav class="navbar">
+      <div class="navbar__brand">
+        <div class="navbar__brand-icon">C</div>
+        <span>CENSYS — Fire Station</span>
+      </div>
+      <div class="navbar__actions">
+        <span class="navbar__user" id="navUser">Fire Station</span>
+        <button class="btn btn--ghost btn--sm" id="logoutBtn" onclick="handleLogout()">Logout</button>
+      </div>
+    </nav>
+
+    <main class="page-content">
+      <div class="container">
+        <!-- FIRE ALARM BANNER -->
+        <div class="alarm-banner alarm-hidden" id="alarmBanner">
+          <div>
+            <div class="alarm-banner__text" id="alarmBannerText">🔥 FIRE DETECTED</div>
+            <div class="alarm-banner__sub" id="alarmBannerSub">Fire alarm is active. Check the affected barangay immediately.</div>
+          </div>
+          <button class="btn btn--danger" id="silenceBtn" onclick="handleSilenceAlarm()">
+            🔇 Silence Alarm
+          </button>
+        </div>
+
+        <!-- PAGE HEADER -->
+        <div class="mt-24 mb-24">
+          <h1 style="font-size:28px; font-weight:800;">San Nicolas Fire Substation</h1>
+          <p class="text-muted mt-8">Real-time overview of all monitored barangays in Cebu City</p>
+        </div>
+
+        <!-- STATS ROW -->
+        <div class="stats-row" id="statsRow">
+          <div class="stat">
+            <div class="stat__value" id="totalNodes" style="color:var(--brand)">0</div>
+            <div class="stat__label">Total Nodes</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" id="onlineNodes" style="color:var(--ok)">0</div>
+            <div class="stat__label">Online</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" id="normalNodes" style="color:var(--ok)">0</div>
+            <div class="stat__label">Normal</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" id="warningNodes" style="color:var(--warn)">0</div>
+            <div class="stat__label">Warning</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" id="fireNodes" style="color:var(--fire)">0</div>
+            <div class="stat__label">Fire</div>
+          </div>
+        </div>
+
+        <!-- ALARM SECTION -->
+        <section class="alarm-section">
+          <div class="section-title">
+            <span class="section-title__icon">🚨</span>
+            BFP Fire Alarm Status
+          </div>
+          <div class="alarm-info">
+            <div>
+              <div class="alarm-level" id="alarmLevelBadge">
+                <span id="alarmLevelIcon">✅</span>
+                <span id="alarmLevelText">No Alarm — All Clear</span>
+              </div>
+              <div class="silence-btn-area" id="silenceBtnArea" style="display:none;">
+                <button class="btn btn--danger btn--block" onclick="handleSilenceAlarm()">
+                  🔇 Silence Fire Alarm
+                </button>
+              </div>
+            </div>
+            <div class="alarm-protocol">
+              <div class="alarm-protocol__title">BFP Protocol Reference</div>
+              <ul class="alarm-protocol__list" id="protocolList">
+                <li>
+                  <span class="alarm-protocol__dot" style="background:var(--ok)"></span>
+                  <span><strong>No Alarm</strong> — All nodes normal</span>
+                </li>
+                <li>
+                  <span class="alarm-protocol__dot" style="background:var(--warn)"></span>
+                  <span><strong>1st Alarm</strong> — 1 node fire detected</span>
+                </li>
+                <li>
+                  <span class="alarm-protocol__dot" style="background:#c2410c"></span>
+                  <span><strong>2nd Alarm</strong> — 2–3 nodes fire detected</span>
+                </li>
+                <li>
+                  <span class="alarm-protocol__dot" style="background:var(--fire)"></span>
+                  <span><strong>3rd Alarm</strong> — 4–5 nodes fire detected</span>
+                </li>
+                <li>
+                  <span class="alarm-protocol__dot" style="background:#450a0a"></span>
+                  <span><strong>General Alarm</strong> — 6+ nodes / full escalation</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- BARANGAY TILES -->
+        <section>
+          <div class="section-title">
+            <span class="section-title__icon">🗺️</span>
+            Monitored Barangays
+          </div>
+          <div class="grid-3" id="brgyGrid">
+            <!-- tiles rendered by JS -->
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="footer">
+      CENSYS Technologies Inc. &copy; 2026 — San Nicolas Fire Substation, Cebu City
+    </footer>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    // Auth guard
+    (function() {
+      const role = sessionStorage.getItem('role');
+      if (role !== 'firestation') {
+        window.location.href = 'index.html';
+      }
+    })();
+
+    function handleLogout() {
+      clearSession();
+      window.location.href = 'index.html';
+    }
+
+    // =====================================================
+    // STATE
+    // =====================================================
+    let prevFireCount = 0;
+    let currentNodes = {};
+
+    // =====================================================
+    // RENDER
+    // =====================================================
+    function renderDashboard(nodesData) {
+      currentNodes = nodesData;
+
+      // Aggregate
+      const allNodes = Object.values(nodesData);
+      const onlineCount = allNodes.filter(n => n.online).length;
+      const normalCount = allNodes.filter(n => n.online && n.category === 'Normal').length;
+      const warningCount = allNodes.filter(n => n.online && n.category === 'Warning').length;
+      const fireCount = allNodes.filter(n => n.online && n.category === 'Fire').length;
+
+      document.getElementById('totalNodes').textContent = allNodes.length;
+      document.getElementById('onlineNodes').textContent = onlineCount;
+      document.getElementById('normalNodes').textContent = normalCount;
+      document.getElementById('warningNodes').textContent = warningCount;
+      document.getElementById('fireNodes').textContent = fireCount;
+
+      // BFP Alarm Level
+      const alarm = getBFPAlarmLevel(fireCount);
+      const levelBadge = document.getElementById('alarmLevelBadge');
+      levelBadge.className = 'alarm-level ' + alarm.class;
+
+      const icons = ['✅', '⚠️', '🔥', '🔥🔥', '🚨'];
+      document.getElementById('alarmLevelIcon').textContent = icons[alarm.level] || '✅';
+      document.getElementById('alarmLevelText').textContent =
+        alarm.level === 0 ? 'No Alarm — All Clear' :
+        `${alarm.label} — ${fireCount} node(s) reporting fire`;
+
+      // Fire alarm sound
+      const banner = document.getElementById('alarmBanner');
+      const silenceArea = document.getElementById('silenceBtnArea');
+
+      if (fireCount > 0) {
+        banner.classList.remove('alarm-hidden');
+        silenceArea.style.display = 'block';
+        document.getElementById('alarmBannerSub').textContent =
+          `${alarm.label}: ${fireCount} node(s) detected fire. Respond immediately.`;
+
+        // New fire event resets silence
+        if (fireCount > prevFireCount) {
+          resetAlarmSilence();
+        }
+
+        if (!alarmSilenced) {
+          startAlarmSound();
+        }
+      } else {
+        banner.classList.add('alarm-hidden');
+        silenceArea.style.display = 'none';
+        stopAlarmSound();
+        resetAlarmSilence();
+      }
+      prevFireCount = fireCount;
+
+      // Highlight active protocol line
+      const items = document.querySelectorAll('#protocolList li');
+      items.forEach((li, idx) => {
+        li.classList.remove('alarm-protocol__active');
+        li.style.background = '';
+      });
+      if (alarm.level >= 0 && alarm.level < items.length) {
+        items[alarm.level].classList.add('alarm-protocol__active');
+        items[alarm.level].style.background = 'var(--surface-active)';
+      }
+
+      // Barangay tiles
+      renderBarangayTiles(nodesData);
+    }
+
+    function renderBarangayTiles(nodesData) {
+      const brgys = {
+        kalunasan: { name: 'Barangay Kalunasan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 },
+        sannicolas: { name: 'Barangay San Nicolas', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 },
+        kalubihan: { name: 'Barangay Kalubihan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 }
+      };
+
+      Object.values(nodesData).forEach(node => {
+        const b = node.barangay;
+        if (brgys[b]) {
+          brgys[b].nodes.push(node);
+          if (node.online) {
+            brgys[b].online++;
+            if (node.category === 'Fire') brgys[b].fire++;
+            else if (node.category === 'Warning') brgys[b].warn++;
+            else brgys[b].normal++;
+          }
+        }
+      });
+
+      const grid = document.getElementById('brgyGrid');
+      grid.innerHTML = Object.entries(brgys).map(([key, brgy]) => {
+        const hasFire = brgy.fire > 0;
+        const fireClass = hasFire ? ' brgy-tile--has-fire' : '';
+        const statusBadge = hasFire
+          ? `<span class="badge badge--fire"><span class="badge__dot badge__dot--pulse"></span>FIRE</span>`
+          : brgy.warn > 0
+          ? `<span class="badge badge--warn">Warning</span>`
+          : brgy.online > 0
+          ? `<span class="badge badge--ok">Normal</span>`
+          : `<span class="badge badge--offline">No Data</span>`;
+
+        return `
+          <a href="barangay-detail.html?barangay=${key}" class="brgy-tile${fireClass}" id="tile-${key}">
+            <div class="brgy-tile__header">
+              <div>
+                <div class="brgy-tile__name">${brgy.name}</div>
+                <div class="brgy-tile__city">Cebu City</div>
+              </div>
+              ${statusBadge}
+            </div>
+            <div class="brgy-tile__node-count">${brgy.nodes.length} sensor node(s) deployed</div>
+            <div class="brgy-tile__stats">
+              <div class="brgy-tile__stat">
+                <span class="brgy-tile__stat-dot" style="background:var(--ok)"></span>
+                ${brgy.normal} Normal
+              </div>
+              <div class="brgy-tile__stat">
+                <span class="brgy-tile__stat-dot" style="background:var(--warn)"></span>
+                ${brgy.warn} Warning
+              </div>
+              <div class="brgy-tile__stat">
+                <span class="brgy-tile__stat-dot" style="background:var(--fire)"></span>
+                ${brgy.fire} Fire
+              </div>
+            </div>
+          </a>
+        `;
+      }).join('');
+    }
+
+    function handleSilenceAlarm() {
+      silenceAlarm();
+      document.getElementById('silenceBtn').textContent = '🔇 Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
+    }
+
+    // =====================================================
+    // FIREBASE LISTENER
+    // =====================================================
+    listenToNodes(renderDashboard);
+  </script>
+</body>
+</html>

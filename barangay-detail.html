@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CENSYS — Barangay Detail</title>
+  <meta name="description" content="Real-time map view of sensor nodes within a barangay.">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    .page-content { padding: 24px 0 40px; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      transition: color var(--transition);
+    }
+    .back-link:hover { color: var(--brand); }
+    .page-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .page-header__title {
+      font-size: 28px;
+      font-weight: 800;
+    }
+    .page-header__sub {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .map-section {
+      margin-bottom: 24px;
+    }
+    .map-container {
+      height: 480px;
+    }
+    @media (min-height: 800px) {
+      .map-container { height: 55vh; }
+    }
+    .nodes-panel {
+      margin-top: 24px;
+    }
+    .node-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: all var(--transition);
+    }
+    .node-card:hover {
+      box-shadow: var(--shadow-md);
+    }
+    .node-card--fire {
+      border-color: var(--fire-border);
+      border-width: 2px;
+    }
+    .node-card--warn {
+      border-color: var(--warn-border);
+      border-width: 2px;
+    }
+    .node-card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .node-card__title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .node-card__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .node-card__field {
+      padding: 8px 0;
+    }
+    .node-card__label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .node-card__value {
+      font-size: 15px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .leaflet-popup .popup-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+    .leaflet-popup .popup-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .leaflet-popup .popup-row:last-child {
+      border-bottom: none;
+    }
+    .leaflet-popup .popup-label {
+      color: #6b7280;
+      font-weight: 500;
+    }
+    .leaflet-popup .popup-value {
+      font-weight: 600;
+    }
+    .legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .legend__item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .legend__dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <!-- NAVBAR -->
+    <nav class="navbar">
+      <div class="navbar__brand">
+        <div class="navbar__brand-icon">C</div>
+        <span id="navTitle">CENSYS</span>
+      </div>
+      <div class="navbar__actions">
+        <span class="navbar__user" id="navUser"></span>
+        <button class="btn btn--ghost btn--sm" onclick="handleBack()">← Back</button>
+        <button class="btn btn--ghost btn--sm" onclick="handleLogout()">Logout</button>
+      </div>
+    </nav>
+
+    <!-- FIRE ALARM BANNER (fire station only) -->
+    <div class="container mt-16">
+      <div class="alarm-banner alarm-hidden" id="alarmBanner">
+        <div>
+          <div class="alarm-banner__text">🔥 FIRE DETECTED IN THIS AREA</div>
+          <div class="alarm-banner__sub" id="alarmBannerSub">Immediate response required.</div>
+        </div>
+        <button class="btn btn--danger" id="silenceBtn" onclick="handleSilenceAlarm()">
+          🔇 Silence Alarm
+        </button>
+      </div>
+    </div>
+
+    <main class="page-content">
+      <div class="container">
+        <a href="#" class="back-link" id="backLink">← Back to dashboard</a>
+
+        <div class="page-header">
+          <div>
+            <h1 class="page-header__title" id="pageTitle">Barangay</h1>
+            <p class="page-header__sub" id="pageSub">Cebu City — Real-time sensor node locations</p>
+          </div>
+          <div id="pageBadge"></div>
+        </div>
+
+        <!-- MAP -->
+        <div class="map-section">
+          <div class="map-container" id="map"></div>
+          <div class="legend">
+            <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
+            <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
+            <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
+            <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+          </div>
+        </div>
+
+        <!-- NODE CARDS -->
+        <div class="nodes-panel">
+          <div class="section-title" style="font-size:20px; font-weight:700; margin-bottom:16px;">
+            <span>📡</span> Sensor Nodes
+          </div>
+          <div id="nodeCards"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      CENSYS Technologies Inc. &copy; 2026 — Cebu City, Philippines
+    </footer>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    // =====================================================
+    // AUTH + PARAMS
+    // =====================================================
+    const role = sessionStorage.getItem('role');
+    const userBarangay = sessionStorage.getItem('barangay');
+
+    if (!role) {
+      window.location.href = 'index.html';
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const barangayKey = params.get('barangay') || userBarangay || 'kalunasan';
+    const brgyInfo = BARANGAY_DATA[barangayKey];
+
+    if (!brgyInfo) {
+      window.location.href = 'index.html';
+    }
+
+    // Set page content
+    document.title = `CENSYS — ${brgyInfo.name}`;
+    document.getElementById('pageTitle').textContent = brgyInfo.name;
+    document.getElementById('navTitle').textContent = `CENSYS — ${brgyInfo.name}`;
+
+    if (role === 'firestation') {
+      document.getElementById('navUser').textContent = 'Fire Station';
+      document.getElementById('backLink').href = 'dashboard-firestation.html';
+      document.getElementById('backLink').textContent = '← Back to Fire Station Dashboard';
+    } else {
+      document.getElementById('navUser').textContent = brgyInfo.name;
+      document.getElementById('backLink').href = 'dashboard-barangay.html';
+      document.getElementById('backLink').textContent = '← Back to Dashboard';
+      // Hide alarm silence for barangay personnel
+      document.getElementById('silenceBtn').style.display = 'none';
+    }
+
+    function handleBack() {
+      if (role === 'firestation') {
+        window.location.href = 'dashboard-firestation.html';
+      } else {
+        window.location.href = 'dashboard-barangay.html';
+      }
+    }
+
+    function handleLogout() {
+      clearSession();
+      window.location.href = 'index.html';
+    }
+
+    function handleSilenceAlarm() {
+      silenceAlarm();
+      const btn = document.getElementById('silenceBtn');
+      btn.textContent = '🔇 Alarm Silenced';
+      btn.disabled = true;
+    }
+
+    // =====================================================
+    // LEAFLET MAP
+    // =====================================================
+    const map = L.map('map').setView(brgyInfo.center, brgyInfo.zoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Barangay area circle highlight
+    L.circle(brgyInfo.center, {
+      radius: 400,
+      color: '#2563eb',
+      fillColor: '#2563eb',
+      fillOpacity: 0.06,
+      weight: 2,
+      dashArray: '8 4'
+    }).addTo(map);
+
+    let markers = {};
+
+    function getCategoryColor(cat, online) {
+      if (!online) return '#9ca3af';
+      if (cat === 'Fire') return '#dc2626';
+      if (cat === 'Warning') return '#d97706';
+      return '#16a34a';
+    }
+
+    function buildPopupContent(node) {
+      return `
+        <div style="min-width:200px">
+          <div class="popup-title">Node ${safe(node.node)}</div>
+          <div class="popup-row"><span class="popup-label">Status</span><span class="popup-value">${node.online ? 'Online' : 'Offline'}</span></div>
+          <div class="popup-row"><span class="popup-label">Category</span><span class="popup-value" style="color:${getCategoryColor(node.category, node.online)}">${safe(node.category)}</span></div>
+          <div class="popup-row"><span class="popup-label">Temperature</span><span class="popup-value">${safe(node.temp)}</span></div>
+          <div class="popup-row"><span class="popup-label">Humidity</span><span class="popup-value">${safe(node.humid)}</span></div>
+          <div class="popup-row"><span class="popup-label">Smoke</span><span class="popup-value">${safe(node.smoke)}</span></div>
+          <div class="popup-row"><span class="popup-label">Fire Sensor</span><span class="popup-value">${safe(node.fire)}</span></div>
+          <div class="popup-row"><span class="popup-label">Health</span><span class="popup-value">${safe(node.health)}</span></div>
+          <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${safe(node.rssi)}</span></div>
+          <div class="popup-row"><span class="popup-label">Hops</span><span class="popup-value">${safe(node.hops)}</span></div>
+          <div class="popup-row"><span class="popup-label">Path</span><span class="popup-value">${safe(node.path)}</span></div>
+          <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${safe(node.last_seen_sec)}s ago</span></div>
+        </div>
+      `;
+    }
+
+    function updateMarkers(nodes) {
+      Object.entries(nodes).forEach(([key, node]) => {
+        const lat = parseFloat(node.lat);
+        const lng = parseFloat(node.lng);
+
+        if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+
+        const color = getCategoryColor(node.category, node.online);
+        const pulseClass = node.category === 'Fire' && node.online ? 'fire-pulse' : '';
+
+        if (markers[key]) {
+          // Update existing marker
+          markers[key].setLatLng([lat, lng]);
+          markers[key].setStyle({ color: color, fillColor: color });
+          markers[key].setPopupContent(buildPopupContent(node));
+        } else {
+          // Create new marker
+          const marker = L.circleMarker([lat, lng], {
+            radius: 14,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.7,
+            weight: 3
+          }).addTo(map);
+
+          marker.bindPopup(buildPopupContent(node), {
+            maxWidth: 280
+          });
+
+          marker.bindTooltip(`Node ${node.node}`, {
+            permanent: false,
+            direction: 'top',
+            offset: [0, -10]
+          });
+
+          markers[key] = marker;
+        }
+      });
+    }
+
+    // =====================================================
+    // NODE CARDS
+    // =====================================================
+    function renderNodeCards(nodes) {
+      const container = document.getElementById('nodeCards');
+      const entries = Object.entries(nodes);
+
+      if (entries.length === 0) {
+        container.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">No sensor nodes assigned to this barangay yet.</p></div>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(([key, node]) => {
+        const borderClass = node.category === 'Fire' ? 'node-card--fire' :
+                           node.category === 'Warning' ? 'node-card--warn' : '';
+
+        const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
+        const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
+
+        return `
+          <div class="node-card ${borderClass}">
+            <div class="node-card__header">
+              <div style="display:flex; align-items:center; gap:10px">
+                <span class="node-card__title">Node ${safe(node.node)}</span>
+                ${statusBadge}
+              </div>
+              ${catBadge}
+            </div>
+            <div class="node-card__grid">
+              <div class="node-card__field">
+                <div class="node-card__label">Temperature</div>
+                <div class="node-card__value">${safe(node.temp)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Humidity</div>
+                <div class="node-card__value">${safe(node.humid)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Smoke</div>
+                <div class="node-card__value">${safe(node.smoke)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Fire Sensor</div>
+                <div class="node-card__value">${safe(node.fire)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Health</div>
+                <div class="node-card__value">${safe(node.health)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">RSSI</div>
+                <div class="node-card__value">${safe(node.rssi)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Hops</div>
+                <div class="node-card__value">${safe(node.hops)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Path</div>
+                <div class="node-card__value">${safe(node.path)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Latitude</div>
+                <div class="node-card__value">${safe(node.lat)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Longitude</div>
+                <div class="node-card__value">${safe(node.lng)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Sequence</div>
+                <div class="node-card__value">${safe(node.seq)}</div>
+              </div>
+              <div class="node-card__field">
+                <div class="node-card__label">Last Seen</div>
+                <div class="node-card__value">${safe(node.last_seen_sec)}s ago</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =====================================================
+    // ALARM HANDLING
+    // =====================================================
+    let prevFireCount = 0;
+
+    function handleAlarm(filteredNodes) {
+      const fireCount = Object.values(filteredNodes).filter(n => n.online && n.category === 'Fire').length;
+      const banner = document.getElementById('alarmBanner');
+
+      if (fireCount > 0) {
+        banner.classList.remove('alarm-hidden');
+        document.getElementById('alarmBannerSub').textContent =
+          `${fireCount} node(s) reporting fire in ${brgyInfo.name}`;
+
+        if (fireCount > prevFireCount) {
+          resetAlarmSilence();
+        }
+
+        if (!alarmSilenced && role === 'firestation') {
+          startAlarmSound();
+        }
+      } else {
+        banner.classList.add('alarm-hidden');
+        stopAlarmSound();
+        resetAlarmSilence();
+      }
+      prevFireCount = fireCount;
+
+      // Page badge
+      const alarm = getBFPAlarmLevel(fireCount);
+      const pageBadge = document.getElementById('pageBadge');
+      if (fireCount > 0) {
+        pageBadge.innerHTML = `<div class="alarm-level ${alarm.class}"><span>🔥</span> ${alarm.label}</div>`;
+      } else {
+        pageBadge.innerHTML = `<div class="alarm-level alarm-level--none"><span>✅</span> All Clear</div>`;
+      }
+    }
+
+    // =====================================================
+    // FIREBASE LISTENER — filter by barangay
+    // =====================================================
+    listenToNodes((allNodes) => {
+      const filtered = {};
+      Object.entries(allNodes).forEach(([key, node]) => {
+        if (node.barangay === barangayKey) {
+          filtered[key] = node;
+        }
+      });
+
+      updateMarkers(filtered);
+      renderNodeCards(filtered);
+      handleAlarm(filtered);
+    });
+  </script>
+</body>
+</html>

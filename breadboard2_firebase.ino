@@ -1,0 +1,717 @@
+#include <SPI.h>
+#include <LoRa.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+
+// =====================================================
+// LORA PINS
+// =====================================================
+#define LORA_SS   5
+#define LORA_RST  14
+#define LORA_DIO0 26
+
+// =====================================================
+// STATUS LED
+// =====================================================
+#define LED_PIN 25
+
+// =====================================================
+// WIFI ACCESS POINT (Local gateway dashboard)
+// =====================================================
+const char* AP_SSID = "CENSYS-Gateway";
+const char* AP_PASS = "censys123";
+
+// =====================================================
+// WIFI STATION (Internet for Firebase)
+// Replace with your actual WiFi network credentials
+// =====================================================
+const char* STA_SSID = "IKYK";
+const char* STA_PASS = "444everydayOK*";
+
+// =====================================================
+// FIREBASE CONFIG
+// Replace with your Firebase Realtime Database URL and secret
+// =====================================================
+#define FIREBASE_HOST "https://censys-antigravity-default-rtdb.asia-southeast1.firebasedatabase.app"
+#define FIREBASE_AUTH "gXuLrZRM6GoMQKKwuHzWNDyp2Sd3x4CefsNG5kFc"  // Get from Firebase Console > Project Settings > Service accounts > Database secrets
+
+// =====================================================
+// Push interval — don't flood Firebase
+// =====================================================
+const unsigned long FIREBASE_PUSH_INTERVAL_MS = 3000;
+unsigned long lastFirebasePush = 0;
+bool firebaseDataDirty = false;
+
+WebServer server(80);
+
+// =====================================================
+// REGISTERED NODE PASSKEYS
+// =====================================================
+const int REGISTERED_NODES = 4;
+String NODE_KEYS[REGISTERED_NODES] = {
+  "CENSYS_N1_2026",
+  "CENSYS_N2_2026",
+  "CENSYS_N3_2026",
+  "CENSYS_N4_2026"
+};
+
+// =====================================================
+// NODE-TO-BARANGAY MAPPING
+// Change the barangay name for each node as needed.
+// Index 0 = unused, index 1..4 = node 1..4
+// =====================================================
+String NODE_BARANGAY[5] = {
+  "",           // unused (index 0)
+  "kalunasan",  // Node 1
+  "kalunasan",  // Node 2
+  "kalunasan",  // Node 3
+  "kalunasan"   // Node 4
+};
+
+// =====================================================
+// NODE DATA STRUCTURE
+// =====================================================
+struct NodeData {
+  bool online;
+  String passkey;
+  int nodeId;
+  int lastSender;
+  unsigned long seq;
+  int hops;
+  String temp;
+  String humid;
+  String smoke;
+  String fire;
+  String lat;
+  String lng;
+  String health;
+  String path;
+  String category;
+  int rssi;
+  unsigned long lastSeenMillis;
+};
+
+NodeData nodes[5];   // use index 1..4
+
+const unsigned long NODE_TIMEOUT_MS = 30000;
+
+// =====================================================
+// DUPLICATE TRACKER
+// =====================================================
+const int SEEN_MAX = 60;
+String seenPackets[SEEN_MAX];
+int seenIndex = 0;
+
+// =====================================================
+// LED STATE
+// =====================================================
+unsigned long lastLedBlink = 0;
+bool ledState = false;
+
+// =====================================================
+// HELPERS
+// =====================================================
+String getField(String data, int index) {
+  int found = 0;
+  int start = 0;
+  int end = -1;
+
+  for (int i = 0; i < (int)data.length(); i++) {
+    if (data.charAt(i) == '|') {
+      found++;
+      start = end + 1;
+      end = i;
+      if (found - 1 == index) return data.substring(start, end);
+    }
+  }
+
+  if (found == index) return data.substring(end + 1);
+  return "";
+}
+
+bool isRegisteredKey(String key) {
+  for (int i = 0; i < REGISTERED_NODES; i++) {
+    if (NODE_KEYS[i] == key) return true;
+  }
+  return false;
+}
+
+bool isSeen(String sig) {
+  for (int i = 0; i < SEEN_MAX; i++) {
+    if (seenPackets[i] == sig) return true;
+  }
+  return false;
+}
+
+void addSeen(String sig) {
+  seenPackets[seenIndex] = sig;
+  seenIndex = (seenIndex + 1) % SEEN_MAX;
+}
+
+bool isNodeOnline(int nodeId) {
+  if (nodeId < 1 || nodeId > 4) return false;
+  if (nodes[nodeId].lastSeenMillis == 0) return false;
+  return (millis() - nodes[nodeId].lastSeenMillis) < NODE_TIMEOUT_MS;
+}
+
+bool allNodesWorking() {
+  for (int i = 1; i <= 4; i++) {
+    if (!isNodeOnline(i)) return false;
+  }
+  return true;
+}
+
+void updateGatewayLED() {
+  if (allNodesWorking()) {
+    digitalWrite(LED_PIN, HIGH);
+    ledState = true;
+  } else {
+    if (millis() - lastLedBlink >= 180) {
+      lastLedBlink = millis();
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+    }
+  }
+}
+
+void sendAck(String key, int originNode, String seqStr) {
+  String ack =
+    key + "|" +
+    "ACK" + "|" +
+    String(originNode) + "|" +
+    seqStr;
+
+  delay(30);
+  LoRa.beginPacket();
+  LoRa.print(ack);
+  LoRa.endPacket();
+
+  Serial.print("Sent ACK: ");
+  Serial.println(ack);
+}
+
+String nodeStatusText(int nodeId) {
+  return isNodeOnline(nodeId) ? "Online" : "Offline";
+}
+
+String esc(String s) {
+  s.replace("\\", "\\\\");
+  s.replace("\"", "\\\"");
+  s.replace("\n", " ");
+  s.replace("\r", " ");
+  return s;
+}
+
+bool isReplacementValue(String v) {
+  v.trim();
+  return (v == "Needs replacement" || v.length() == 0);
+}
+
+// =====================================================
+// CATEGORY CLASSIFICATION
+// =====================================================
+String classifyCategory(String tempStr, String humStr, String smokeStr, String fireStr, String healthStr) {
+  if (healthStr.indexOf("Needs replacement") >= 0) {
+    return "Warning";
+  }
+
+  float temp = tempStr.toFloat();
+  float hum  = humStr.toFloat();
+  int smoke  = smokeStr.toInt();
+  bool flame = (fireStr == "Flame");
+
+  int fireVotes = 0;
+  int warningVotes = 0;
+
+  if (!isReplacementValue(tempStr)) {
+    if (temp >= 58.0) fireVotes++;
+    else if (temp >= 39.0) warningVotes++;
+  }
+
+  if (!isReplacementValue(smokeStr)) {
+    if (smoke >= 850) fireVotes++;
+    else if (smoke >= 450) warningVotes++;
+  }
+
+  if (!isReplacementValue(fireStr) && flame) {
+    fireVotes++;
+  }
+
+  if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
+    if (temp >= 39.0 && hum <= 25.0) warningVotes++;
+    if (temp >= 45.0 && hum <= 20.0) warningVotes++;
+  }
+
+  if (fireVotes >= 2) return "Fire";
+  if (fireVotes >= 1 && warningVotes >= 1) return "Fire";
+  if (flame && smoke >= 450) return "Fire";
+  if (flame && temp >= 39.0) return "Fire";
+  if (temp >= 65.0) return "Fire";
+
+  if (fireVotes == 1) return "Warning";
+  if (warningVotes >= 1) return "Warning";
+
+  return "Normal";
+}
+
+int countCategory(String wanted) {
+  int c = 0;
+  for (int i = 1; i <= 4; i++) {
+    if (isNodeOnline(i) && nodes[i].category == wanted) c++;
+  }
+  return c;
+}
+
+// =====================================================
+// FIREBASE PUSH
+// =====================================================
+void pushNodeToFirebase(int nodeId) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (nodeId < 1 || nodeId > 4) return;
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  String url = String(FIREBASE_HOST) + "/nodes/node" + String(nodeId) + ".json?auth=" + String(FIREBASE_AUTH);
+
+  unsigned long ageSec = 0;
+  if (nodes[nodeId].lastSeenMillis > 0) {
+    ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
+  }
+
+  String json = "{";
+  json += "\"online\":" + String(isNodeOnline(nodeId) ? "true" : "false") + ",";
+  json += "\"node\":" + String(nodeId) + ",";
+  json += "\"barangay\":\"" + NODE_BARANGAY[nodeId] + "\",";
+  json += "\"last_sender\":" + String(nodes[nodeId].lastSender) + ",";
+  json += "\"seq\":" + String(nodes[nodeId].seq) + ",";
+  json += "\"hops\":" + String(nodes[nodeId].hops) + ",";
+  json += "\"temp\":\"" + esc(nodes[nodeId].temp) + "\",";
+  json += "\"humid\":\"" + esc(nodes[nodeId].humid) + "\",";
+  json += "\"smoke\":\"" + esc(nodes[nodeId].smoke) + "\",";
+  json += "\"fire\":\"" + esc(nodes[nodeId].fire) + "\",";
+  json += "\"lat\":\"" + esc(nodes[nodeId].lat) + "\",";
+  json += "\"lng\":\"" + esc(nodes[nodeId].lng) + "\",";
+  json += "\"health\":\"" + esc(nodes[nodeId].health) + "\",";
+  json += "\"path\":\"" + esc(nodes[nodeId].path) + "\",";
+  json += "\"category\":\"" + esc(nodes[nodeId].category) + "\",";
+  json += "\"rssi\":" + String(nodes[nodeId].rssi) + ",";
+  json += "\"last_seen_sec\":" + String(ageSec) + ",";
+  json += "\"passkey\":\"" + esc(nodes[nodeId].passkey) + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.PUT(json);
+
+  if (httpCode > 0) {
+    Serial.print("Firebase node" + String(nodeId) + " push: ");
+    Serial.println(httpCode);
+  } else {
+    Serial.print("Firebase node" + String(nodeId) + " error: ");
+    Serial.println(http.errorToString(httpCode));
+  }
+
+  http.end();
+}
+
+void pushGatewayToFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  String url = String(FIREBASE_HOST) + "/gateway.json?auth=" + String(FIREBASE_AUTH);
+
+  String json = "{";
+  json += "\"ip\":\"" + WiFi.softAPIP().toString() + "\",";
+  json += "\"ssid\":\"" + String(AP_SSID) + "\",";
+  json += "\"all_nodes_working\":" + String(allNodesWorking() ? "true" : "false") + ",";
+  json += "\"normal_count\":" + String(countCategory("Normal")) + ",";
+  json += "\"warning_count\":" + String(countCategory("Warning")) + ",";
+  json += "\"fire_count\":" + String(countCategory("Fire")) + ",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.PUT(json);
+
+  if (httpCode > 0) {
+    Serial.print("Firebase gateway push: ");
+    Serial.println(httpCode);
+  } else {
+    Serial.print("Firebase gateway error: ");
+    Serial.println(http.errorToString(httpCode));
+  }
+
+  http.end();
+}
+
+void pushAllToFirebase() {
+  for (int i = 1; i <= 4; i++) {
+    pushNodeToFirebase(i);
+  }
+  pushGatewayToFirebase();
+  Serial.println("Firebase: All data pushed");
+}
+
+// =====================================================
+// LOCAL WEB JSON
+// =====================================================
+String buildJson() {
+  String json = "{";
+
+  json += "\"gateway\":{";
+  json += "\"ip\":\"" + WiFi.softAPIP().toString() + "\",";
+  json += "\"ssid\":\"" + String(AP_SSID) + "\",";
+  json += "\"all_nodes_working\":";
+  json += (allNodesWorking() ? "true" : "false");
+  json += ",";
+  json += "\"normal_count\":" + String(countCategory("Normal")) + ",";
+  json += "\"warning_count\":" + String(countCategory("Warning")) + ",";
+  json += "\"fire_count\":" + String(countCategory("Fire"));
+  json += "},";
+
+  json += "\"nodes\":[";
+  for (int i = 1; i <= 4; i++) {
+    if (i > 1) json += ",";
+
+    unsigned long ageSec = 0;
+    if (nodes[i].lastSeenMillis > 0) {
+      ageSec = (millis() - nodes[i].lastSeenMillis) / 1000;
+    }
+
+    json += "{";
+    json += "\"node\":" + String(i) + ",";
+    json += "\"online\":";
+    json += (isNodeOnline(i) ? "true" : "false");
+    json += ",";
+    json += "\"status\":\"" + nodeStatusText(i) + "\",";
+    json += "\"passkey\":\"" + esc(nodes[i].passkey) + "\",";
+    json += "\"last_sender\":" + String(nodes[i].lastSender) + ",";
+    json += "\"seq\":" + String(nodes[i].seq) + ",";
+    json += "\"hops\":" + String(nodes[i].hops) + ",";
+    json += "\"temp\":\"" + esc(nodes[i].temp) + "\",";
+    json += "\"humid\":\"" + esc(nodes[i].humid) + "\",";
+    json += "\"smoke\":\"" + esc(nodes[i].smoke) + "\",";
+    json += "\"fire\":\"" + esc(nodes[i].fire) + "\",";
+    json += "\"lat\":\"" + esc(nodes[i].lat) + "\",";
+    json += "\"lng\":\"" + esc(nodes[i].lng) + "\",";
+    json += "\"health\":\"" + esc(nodes[i].health) + "\",";
+    json += "\"path\":\"" + esc(nodes[i].path) + "\",";
+    json += "\"category\":\"" + esc(nodes[i].category) + "\",";
+    json += "\"rssi\":" + String(nodes[i].rssi) + ",";
+    json += "\"last_seen_sec\":" + String(ageSec);
+    json += "}";
+  }
+  json += "]";
+
+  json += "}";
+
+  return json;
+}
+
+// =====================================================
+// WEB HANDLERS (same local dashboard as before)
+// =====================================================
+void handleRoot() {
+  String html = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CENSYS Gateway Monitor</title>
+<style>
+  :root{
+    --bg:#f4f7fb;--card:#ffffff;--line:#d9e2ec;--text:#1f2937;
+    --muted:#6b7280;--ok:#15803d;--off:#b91c1c;--warn:#b45309;
+    --fire:#b91c1c;--accent:#1d4ed8;--accent-soft:#dbeafe;
+    --shadow:0 10px 30px rgba(0,0,0,.06);--radius:18px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#eef4fb 0%,#f8fbff 100%);color:var(--text);}
+  .wrap{width:min(1450px,95%);margin:24px auto;}
+  .top{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:18px;}
+  .title{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;align-items:center;}
+  h1{margin:0;font-size:clamp(24px,3vw,36px);letter-spacing:.3px;}
+  .sub{color:var(--muted);margin-top:6px;font-size:14px;}
+  .badge{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;font-size:14px;font-weight:700;background:var(--accent-soft);color:var(--accent);}
+  .dot{width:10px;height:10px;border-radius:50%;background:currentColor;}
+  .meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:18px;}
+  .mini{background:#f8fbff;border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .mini .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.8px;}
+  .mini .v{margin-top:6px;font-weight:700;font-size:18px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;}
+  .cardhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .head-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .node-title{font-size:22px;font-weight:700;}
+  .status{padding:8px 12px;border-radius:999px;font-weight:700;font-size:13px;}
+  .online{background:#dcfce7;color:var(--ok);}
+  .offline{background:#fee2e2;color:var(--off);}
+  .cat{padding:8px 12px;border-radius:999px;font-weight:700;font-size:13px;}
+  .cat-normal{background:#dcfce7;color:var(--ok);}
+  .cat-warning{background:#fef3c7;color:var(--warn);}
+  .cat-fire{background:#fee2e2;color:var(--fire);}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;}
+  td{padding:10px 0;border-bottom:1px solid #eef2f7;vertical-align:top;word-wrap:break-word;font-size:14px;}
+  td:first-child{width:38%;color:var(--muted);font-weight:600;padding-right:12px;}
+  .foot{margin-top:18px;color:var(--muted);font-size:13px;text-align:center;}
+  .good{color:var(--ok);font-weight:700}
+  .bad{color:var(--off);font-weight:700}
+  .warn{color:var(--warn);font-weight:700}
+  @media(max-width:640px){.wrap{width:min(100%,96%)}.top,.card{padding:15px}td:first-child{width:42%}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="top">
+      <div class="title">
+        <div>
+          <h1>CENSYS Gateway Local Monitor</h1>
+          <div class="sub">Local diagnostics &mdash; LoRa connectivity, sensor values, fire category.</div>
+        </div>
+        <div id="networkBadge" class="badge"><span class="dot"></span><span>Loading...</span></div>
+      </div>
+      <div class="meta">
+        <div class="mini"><div class="k">Gateway IP</div><div class="v" id="gatewayIp">-</div></div>
+        <div class="mini"><div class="k">Wi-Fi SSID</div><div class="v" id="gatewaySsid">-</div></div>
+        <div class="mini"><div class="k">Normal</div><div class="v" id="normalCount">0</div></div>
+        <div class="mini"><div class="k">Warning</div><div class="v" id="warningCount">0</div></div>
+        <div class="mini"><div class="k">Fire</div><div class="v" id="fireCount">0</div></div>
+        <div class="mini"><div class="k">Refresh</div><div class="v">Every 2s</div></div>
+      </div>
+    </section>
+    <section class="grid" id="nodeGrid"></section>
+    <div class="foot">CENSYS Technologies Inc. &mdash; Local gateway diagnostics</div>
+  </div>
+<script>
+function field(l,v){return `<tr><td>${l}</td><td>${v??'-'}</td></tr>`;}
+function sc(o){return o?'online':'offline';}
+function cc(c){if(c==='Fire')return 'cat-fire';if(c==='Warning')return 'cat-warning';return 'cat-normal';}
+function s(v){if(v===undefined||v===null||v==='')return '-';return String(v);}
+function buildCard(n){
+  const hc=String(n.health).includes('Needs replacement')?'bad':String(n.health).includes('No Fix')?'warn':'good';
+  return `<article class="card"><div class="cardhead"><div class="head-left"><div class="node-title">Node ${n.node}</div><div class="status ${sc(n.online)}">${n.status}</div></div><div class="cat ${cc(n.category)}">${s(n.category)}</div></div><table>${field('Last Sender',s(n.last_sender))}${field('Sequence',s(n.seq))}${field('Hops',s(n.hops))}${field('Temperature',s(n.temp))}${field('Humidity',s(n.humid))}${field('Smoke',s(n.smoke))}${field('Fire Sensor',s(n.fire))}${field('Latitude',s(n.lat))}${field('Longitude',s(n.lng))}${field('Health',`<span class="${hc}">${s(n.health)}</span>`)}${field('Category',`<strong>${s(n.category)}</strong>`)}${field('Path',s(n.path))}${field('RSSI',s(n.rssi))}${field('Last Seen',s(n.last_seen_sec)+' sec ago')}</table></article>`;
+}
+async function loadData(){
+  try{
+    const r=await fetch('/data');const d=await r.json();
+    document.getElementById('gatewayIp').textContent=d.gateway.ip;
+    document.getElementById('gatewaySsid').textContent=d.gateway.ssid;
+    document.getElementById('normalCount').textContent=d.gateway.normal_count;
+    document.getElementById('warningCount').textContent=d.gateway.warning_count;
+    document.getElementById('fireCount').textContent=d.gateway.fire_count;
+    const b=document.getElementById('networkBadge');
+    if(d.gateway.all_nodes_working){b.innerHTML='<span class="dot"></span><span>All nodes working</span>';b.style.background='#dcfce7';b.style.color='#15803d';}
+    else{b.innerHTML='<span class="dot"></span><span>Waiting for all nodes</span>';b.style.background='#fee2e2';b.style.color='#b91c1c';}
+    document.getElementById('nodeGrid').innerHTML=d.nodes.map(buildCard).join('');
+  }catch(e){console.log(e);}
+}
+loadData();setInterval(loadData,2000);
+</script>
+</body>
+</html>
+)rawliteral";
+  server.send(200, "text/html", html);
+}
+
+void handleData() {
+  server.send(200, "application/json", buildJson());
+}
+
+// =====================================================
+// SETUP
+// =====================================================
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  for (int i = 1; i <= 4; i++) {
+    nodes[i].online = false;
+    nodes[i].passkey = "";
+    nodes[i].nodeId = i;
+    nodes[i].lastSender = 0;
+    nodes[i].seq = 0;
+    nodes[i].hops = 0;
+    nodes[i].temp = "-";
+    nodes[i].humid = "-";
+    nodes[i].smoke = "-";
+    nodes[i].fire = "-";
+    nodes[i].lat = "-";
+    nodes[i].lng = "-";
+    nodes[i].health = "-";
+    nodes[i].path = "-";
+    nodes[i].category = "Normal";
+    nodes[i].rssi = 0;
+    nodes[i].lastSeenMillis = 0;
+  }
+
+  // LoRa init
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+  if (!LoRa.begin(433E6)) {
+    Serial.println("LoRa init failed!");
+    while (1) {
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+      delay(120);
+    }
+  }
+
+  // WiFi: AP + Station mode
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, AP_PASS);
+
+  // Connect to internet WiFi for Firebase
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(STA_SSID);
+  WiFi.begin(STA_SSID, STA_PASS);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("WiFi connected! IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println();
+    Serial.println("WiFi connection failed — Firebase push disabled");
+    Serial.println("Local gateway dashboard still works via AP");
+  }
+
+  Serial.println("--------------------------------");
+  Serial.println("Breadboard 2 Gateway Ready (Firebase Enabled)");
+  Serial.print("Gateway AP IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  server.on("/", handleRoot);
+  server.on("/data", handleData);
+  server.begin();
+
+  Serial.println("Local website ready");
+  Serial.println("Connect to WiFi: CENSYS-Gateway");
+  Serial.println("Open browser: http://192.168.4.1");
+}
+
+// =====================================================
+// LOOP
+// =====================================================
+void loop() {
+  server.handleClient();
+  updateGatewayLED();
+
+  // Periodic Firebase push
+  if (firebaseDataDirty && (millis() - lastFirebasePush >= FIREBASE_PUSH_INTERVAL_MS)) {
+    pushAllToFirebase();
+    lastFirebasePush = millis();
+    firebaseDataDirty = false;
+  }
+
+  int packetSize = LoRa.parsePacket();
+  if (!packetSize) return;
+
+  String rx = "";
+  while (LoRa.available()) rx += (char)LoRa.read();
+  rx.trim();
+
+  int rssi = LoRa.packetRssi();
+
+  String key  = getField(rx, 0);
+  String type = getField(rx, 1);
+
+  if (!isRegisteredKey(key)) {
+    Serial.println("--------------------------------");
+    Serial.println("Rejected packet: Invalid passkey");
+    return;
+  }
+
+  if (type != "DATA") return;
+
+  String originStr = getField(rx, 2);
+  String senderStr = getField(rx, 3);
+  String seqStr    = getField(rx, 4);
+  String hopsStr   = getField(rx, 5);
+  String tempStr   = getField(rx, 6);
+  String humStr    = getField(rx, 7);
+  String mq2Str    = getField(rx, 8);
+  String fireStr   = getField(rx, 9);
+  String latStr    = getField(rx, 10);
+  String lngStr    = getField(rx, 11);
+  String healthStr = getField(rx, 12);
+  String pathStr   = getField(rx, 13);
+
+  int originNode = originStr.toInt();
+  int lastSender = senderStr.toInt();
+  unsigned long seq = seqStr.toInt();
+  int hops = hopsStr.toInt();
+
+  if (originNode < 1 || originNode > 4) {
+    Serial.println("--------------------------------");
+    Serial.println("Rejected packet: Invalid node ID");
+    return;
+  }
+
+  String sig = key + "|" + originStr + "|" + seqStr;
+  if (isSeen(sig)) {
+    Serial.println("--------------------------------");
+    Serial.println("Duplicate packet ignored");
+    return;
+  }
+  addSeen(sig);
+
+  String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+
+  nodes[originNode].online = true;
+  nodes[originNode].passkey = key;
+  nodes[originNode].nodeId = originNode;
+  nodes[originNode].lastSender = lastSender;
+  nodes[originNode].seq = seq;
+  nodes[originNode].hops = hops;
+  nodes[originNode].temp = tempStr;
+  nodes[originNode].humid = humStr;
+  nodes[originNode].smoke = mq2Str;
+  nodes[originNode].fire = fireStr;
+  nodes[originNode].lat = latStr;
+  nodes[originNode].lng = lngStr;
+  nodes[originNode].health = healthStr;
+  nodes[originNode].path = pathStr;
+  nodes[originNode].category = category;
+  nodes[originNode].rssi = rssi;
+  nodes[originNode].lastSeenMillis = millis();
+
+  // Mark data dirty so Firebase push happens on next interval
+  firebaseDataDirty = true;
+
+  Serial.println("--------------------------------");
+  Serial.println("VALID NODE DATA RECEIVED");
+  Serial.print("Origin Node: "); Serial.println(originNode);
+  Serial.print("Last Sender: "); Serial.println(lastSender);
+  Serial.print("Sequence: "); Serial.println(seq);
+  Serial.print("Hops: "); Serial.println(hops);
+  Serial.print("Temp: "); Serial.println(tempStr);
+  Serial.print("Humid: "); Serial.println(humStr);
+  Serial.print("Smoke: "); Serial.println(mq2Str);
+  Serial.print("Fire Sensor: "); Serial.println(fireStr);
+  Serial.print("Latitude: "); Serial.println(latStr);
+  Serial.print("Longitude: "); Serial.println(lngStr);
+  Serial.print("Health: "); Serial.println(healthStr);
+  Serial.print("Category: "); Serial.println(category);
+  Serial.print("Path: "); Serial.println(pathStr);
+  Serial.print("RSSI: "); Serial.println(rssi);
+
+  sendAck(key, originNode, seqStr);
+}
