@@ -88,9 +88,9 @@
       const pass = document.getElementById('password').value;
       const errEl = document.getElementById('loginError');
 
-      if (user === 'firestation' && pass === 'firestation') {
+      if (user === 'sannicolas' && pass === 'sannicolas') {
         sessionStorage.setItem('role', 'firestation');
-        sessionStorage.setItem('user', 'firestation');
+        sessionStorage.setItem('user', 'sannicolas');
         window.location.href = 'dashboard-firestation.html';
       } else {
         errEl.classList.add('visible');

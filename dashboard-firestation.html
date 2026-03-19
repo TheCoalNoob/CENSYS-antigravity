@@ -152,10 +152,10 @@
     <nav class="navbar">
       <div class="navbar__brand">
         <div class="navbar__brand-icon">C</div>
-        <span>CENSYS — Fire Station</span>
+        <span>CENSYS — San Nicolas Fire Station</span>
       </div>
       <div class="navbar__actions">
-        <span class="navbar__user" id="navUser">Fire Station</span>
+        <span class="navbar__user" id="navUser">San Nicolas Fire Station</span>
         <button class="btn btn--ghost btn--sm" id="logoutBtn" onclick="handleLogout()">Logout</button>
       </div>
     </nav>
@@ -175,9 +175,20 @@
 
         <!-- PAGE HEADER -->
         <div class="mt-24 mb-24">
-          <h1 style="font-size:28px; font-weight:800;">San Nicolas Fire Substation</h1>
+          <h1 style="font-size:28px; font-weight:800;">San Nicolas Fire Station</h1>
           <p class="text-muted mt-8">Real-time overview of all monitored barangays in Cebu City</p>
         </div>
+
+        <!-- BARANGAY TILES (top priority — visible immediately) -->
+        <section class="mb-24">
+          <div class="section-title">
+            <span class="section-title__icon">🗺️</span>
+            Monitored Barangays
+          </div>
+          <div class="grid-3" id="brgyGrid">
+            <!-- tiles rendered by JS -->
+          </div>
+        </section>
 
         <!-- STATS ROW -->
         <div class="stats-row" id="statsRow">
@@ -246,17 +257,6 @@
                 </li>
               </ul>
             </div>
-          </div>
-        </section>
-
-        <!-- BARANGAY TILES -->
-        <section>
-          <div class="section-title">
-            <span class="section-title__icon">🗺️</span>
-            Monitored Barangays
-          </div>
-          <div class="grid-3" id="brgyGrid">
-            <!-- tiles rendered by JS -->
           </div>
         </section>
       </div>
