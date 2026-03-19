@@ -171,17 +171,17 @@ function safe(v) {
 const BARANGAY_DATA = {
   kalunasan: {
     name: 'Barangay Kalunasan',
-    center: [10.3341116, 123.8815901],
-    zoom: 15
+    center: [10.3290849, 123.8869029],
+    zoom: 16
   },
   sannicolas: {
     name: 'Barangay San Nicolas',
-    center: [10.2947462, 123.8893411],
+    center: [10.295138, 123.8907164],
     zoom: 17
   },
   kalubihan: {
     name: 'Barangay Kalubihan',
-    center: [10.2968983, 123.8979788],
+    center: [10.2991276, 123.8956305],
     zoom: 17
   }
 };

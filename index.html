@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CENSYS — Community Fire Early-Warning System</title>
-  <meta name="description" content="CENSYS Fire Monitoring System — Real-time node-based fire detection for barangays in Cebu City.">
+  <title>CENSYS — LoRa Mesh-Based Community Fire Monitoring Network</title>
+  <meta name="description" content="CENSYS: A LoRa Mesh-Based Community Fire Monitoring Network with Real-Time Sensor Monitoring and a Geo-Mapped Emergency Dashboard for Fire Stations.">
   <link rel="stylesheet" href="styles.css">
   <style>
     .hero {
@@ -15,54 +15,96 @@
       justify-content: center;
       text-align: center;
       padding: 40px 20px;
+      background: linear-gradient(180deg, #fef8f6 0%, #fdf2ee 30%, #f8ebe4 60%, #f0f4f8 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(220,38,38,0.06) 0%, rgba(234,88,12,0.04) 40%, transparent 70%);
+      border-radius: 50%;
+      pointer-events: none;
     }
     .hero__logo {
-      width: 80px;
-      height: 80px;
-      background: var(--brand);
-      border-radius: 20px;
+      width: 88px;
+      height: 88px;
+      background: linear-gradient(135deg, #dc2626, #ea580c);
+      border-radius: 22px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 24px;
-      box-shadow: 0 8px 32px rgba(37, 99, 235, 0.25);
+      margin: 0 auto 28px;
+      box-shadow: 0 8px 32px rgba(220, 38, 38, 0.3);
+      position: relative;
+      z-index: 1;
     }
     .hero__logo svg {
-      width: 44px;
-      height: 44px;
+      width: 48px;
+      height: 48px;
       fill: white;
     }
+    .hero__badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      background: rgba(220, 38, 38, 0.08);
+      color: #dc2626;
+      border: 1px solid rgba(220, 38, 38, 0.15);
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 1;
+    }
     .hero__title {
-      font-size: clamp(32px, 5vw, 52px);
+      font-size: clamp(22px, 3.5vw, 36px);
       font-weight: 800;
-      letter-spacing: -0.5px;
-      line-height: 1.15;
+      letter-spacing: -0.3px;
+      line-height: 1.25;
       color: var(--text-primary);
+      max-width: 900px;
+      position: relative;
+      z-index: 1;
     }
     .hero__title span {
-      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      background: linear-gradient(135deg, #dc2626, #ea580c);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
     .hero__sub {
-      margin-top: 12px;
-      font-size: 17px;
+      margin-top: 16px;
+      font-size: 16px;
       color: var(--text-secondary);
-      max-width: 520px;
+      max-width: 600px;
+      line-height: 1.6;
+      position: relative;
+      z-index: 1;
     }
     .role-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 24px;
       margin-top: 48px;
-      width: min(680px, 100%);
+      width: min(720px, 100%);
+      position: relative;
+      z-index: 1;
     }
     .role-card {
       background: var(--surface);
       border: 2px solid var(--border);
       border-radius: var(--radius-lg);
-      padding: 40px 28px;
+      padding: 36px 28px;
       cursor: pointer;
       transition: all 0.25s var(--ease);
       text-align: center;
@@ -70,9 +112,16 @@
       color: inherit;
     }
     .role-card:hover {
-      border-color: var(--brand);
-      box-shadow: var(--shadow-md);
       transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+    }
+    .role-card--fire:hover {
+      border-color: #dc2626;
+      box-shadow: 0 8px 32px rgba(220, 38, 38, 0.15);
+    }
+    .role-card--brgy:hover {
+      border-color: #ea580c;
+      box-shadow: 0 8px 32px rgba(234, 88, 12, 0.15);
     }
     .role-card__icon {
       width: 64px;
@@ -85,12 +134,12 @@
       font-size: 28px;
     }
     .role-card__icon--fire {
-      background: #fef2f2;
-      color: var(--fire);
+      background: linear-gradient(135deg, #fef2f2, #fee2e2);
+      color: #dc2626;
     }
     .role-card__icon--brgy {
-      background: #eff6ff;
-      color: var(--brand);
+      background: linear-gradient(135deg, #fff7ed, #ffedd5);
+      color: #ea580c;
     }
     .role-card__title {
       font-size: 20px;
@@ -102,47 +151,102 @@
       color: var(--text-secondary);
       line-height: 1.5;
     }
-    .hero__footer {
-      margin-top: 64px;
+    .hero__features {
+      display: flex;
+      gap: 32px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 48px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero__feature {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .hero__feature-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: rgba(220, 38, 38, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+    .hero__footer {
+      margin-top: 56px;
+      font-size: 12px;
       color: var(--text-muted);
+      position: relative;
+      z-index: 1;
     }
   </style>
 </head>
 <body>
   <main class="hero">
     <div class="hero__logo">
+      <!-- Fire / shield icon -->
       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        <path d="M12 12.9l-2.13 2.09C9.31 15.55 9 16.28 9 17.06 9 18.68 10.35 20 12 20s3-1.32 3-2.94c0-.78-.31-1.51-.87-2.07L12 12.9zM16 6l-.44.55C14.38 8.02 12 7.19 12 5.3V2S4 7 4 12c0 2.92 1.56 5.47 3.89 6.86-.56-.79-.89-1.76-.89-2.8 0-1.32.52-2.56 1.47-3.5L12 9.1l3.53 3.47c.95.93 1.47 2.17 1.47 3.5 0 1.02-.31 1.96-.85 2.75 1.89-1.15 3.29-3.06 3.71-5.3.66-3.55-1.94-6.36-3.86-7.52z"/>
       </svg>
     </div>
+
+    <div class="hero__badge">
+      🔥 Fire Safety & Preparedness
+    </div>
+
     <h1 class="hero__title">
-      Welcome to <span>CENSYS</span>
+      <span>CENSYS:</span> A LoRa Mesh-Based Community Fire Monitoring Network with Real-Time Sensor Monitoring and a Geo-Mapped Emergency Dashboard for Fire Stations
     </h1>
+
     <p class="hero__sub">
-      Community-based Early-warning Network System — Real-time fire monitoring for Cebu City barangays.
+      Protecting Cebu City barangays through an IoT-powered early-warning network — real-time fire detection, multi-hop LoRa mesh communication, and instant emergency alerts.
     </p>
 
     <div class="role-grid">
-      <a href="login-firestation.html" class="role-card" id="role-firestation">
+      <a href="login-firestation.html" class="role-card role-card--fire" id="role-firestation">
         <div class="role-card__icon role-card__icon--fire">🚒</div>
         <div class="role-card__title">Fire Station</div>
         <div class="role-card__desc">
-          San Nicolas Fire Substation dashboard — monitor all barangays, manage fire alarms.
+          San Nicolas Fire Station — command dashboard for monitoring all barangays and managing fire alarms.
         </div>
       </a>
 
-      <a href="login-barangay.html" class="role-card" id="role-barangay">
+      <a href="login-barangay.html" class="role-card role-card--brgy" id="role-barangay">
         <div class="role-card__icon role-card__icon--brgy">🏘️</div>
         <div class="role-card__title">Barangay Personnel</div>
         <div class="role-card__desc">
-          Access your barangay's sensor nodes, view map positions and real-time data.
+          Access your barangay's geo-mapped sensor nodes, view real-time fire monitoring data.
         </div>
       </a>
     </div>
 
+    <div class="hero__features">
+      <div class="hero__feature">
+        <div class="hero__feature-icon">📡</div>
+        LoRa Mesh Network
+      </div>
+      <div class="hero__feature">
+        <div class="hero__feature-icon">🌡️</div>
+        Real-Time Sensors
+      </div>
+      <div class="hero__feature">
+        <div class="hero__feature-icon">🗺️</div>
+        Geo-Mapped Dashboard
+      </div>
+      <div class="hero__feature">
+        <div class="hero__feature-icon">🚨</div>
+        BFP Alarm Protocol
+      </div>
+    </div>
+
     <div class="hero__footer">
-      CENSYS Technologies Inc. &copy; 2026 — Cebu City, Philippines
+      CENSYS &copy; 2026 — Cebu City, Philippines
     </div>
   </main>
 </body>

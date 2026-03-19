@@ -243,7 +243,15 @@
     // =====================================================
     // MAP
     // =====================================================
-    const map = L.map('map').setView(brgyInfo.center, brgyInfo.zoom);
+    const map = L.map('map', {
+      dragging: false,
+      touchZoom: false,
+      doubleClickZoom: false,
+      scrollWheelZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      zoomControl: false
+    }).setView(brgyInfo.center, brgyInfo.zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
       maxZoom: 19

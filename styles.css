@@ -24,11 +24,11 @@
   --text-muted: #94a3b8;
   --text-inverse: #ffffff;
 
-  /* Brand */
-  --brand: #2563eb;
-  --brand-light: #dbeafe;
-  --brand-dark: #1d4ed8;
-  --brand-text: #1e40af;
+  /* Brand — Fire safety themed */
+  --brand: #dc2626;
+  --brand-light: #fef2f2;
+  --brand-dark: #b91c1c;
+  --brand-text: #991b1b;
 
   /* Status */
   --ok: #16a34a;
@@ -148,7 +148,7 @@ img { max-width: 100%; display: block; }
 .navbar__brand-icon {
   width: 36px;
   height: 36px;
-  background: var(--brand);
+  background: linear-gradient(135deg, #dc2626, #ea580c);
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -191,13 +191,13 @@ img { max-width: 100%; display: block; }
 }
 
 .btn--primary {
-  background: var(--brand);
+  background: linear-gradient(135deg, #dc2626, #ea580c);
   color: white;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
 }
 .btn--primary:hover {
-  background: var(--brand-dark);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  background: linear-gradient(135deg, #b91c1c, #c2410c);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
   transform: translateY(-1px);
 }
 
