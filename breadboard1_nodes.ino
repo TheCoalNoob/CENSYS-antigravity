@@ -2,12 +2,28 @@
 #include <LoRa.h>
 #include <DHT.h>
 #include <TinyGPSPlus.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 // =====================================================
 // NODE SETTINGS (CHANGE PER NODE)
 // =====================================================
 #define NODE_ID 4
 String NODE_PASSKEY = "CENSYS_N4_2026";   // change per node
+String NODE_BARANGAY = "kalunasan";        // change per node
+
+// =====================================================
+// WIFI CREDENTIALS (same as gateway)
+// =====================================================
+const char* STA_SSID = "IKYK";
+const char* STA_PASS = "444everydayOK*";
+
+// =====================================================
+// FIREBASE CONFIG (same as gateway — pushes to same DB)
+// =====================================================
+#define FIREBASE_HOST "https://censys-antigravity-default-rtdb.asia-southeast1.firebasedatabase.app"
+#define FIREBASE_AUTH "gXuLrZRM6GoMQKKwuHzWNDyp2Sd3x4CefsNG5kFc"
 
 // =====================================================
 // LORA PINS
@@ -37,7 +53,7 @@ TinyGPSPlus gps;
 DHT dht(DHTPIN, DHTTYPE);
 
 // =====================================================
-// GPS CACHED COORDINATES (for indoor use)
+// GPS CACHED COORDINATES
 // =====================================================
 double cachedLat = 0.0;
 double cachedLng = 0.0;
@@ -46,31 +62,31 @@ unsigned long lastGPSFixMillis = 0;
 const unsigned long GPS_CACHE_MAX_AGE_MS = 300000;
 
 // =====================================================
-// TDMA TIMING — Each node gets a 3-second slot
-// in a 12-second cycle. ZERO collisions.
-//
-//  Cycle:  |---N1---|---N2---|---N3---|---N4---|
-//  Time:   0s      3s      6s      9s     12s
-//
+// WIFI STATE
 // =====================================================
-const unsigned long TDMA_CYCLE_MS   = 12000;  // Full cycle = 12 seconds
-const unsigned long TDMA_SLOT_MS    = 3000;   // Each node gets 3 seconds
-const unsigned long ACK_TIMEOUT_MS  = 1500;   // ACK wait (generous for mesh hops)
-const unsigned long NETWORK_OK_MS   = 30000;  // 30s = 2.5 missed cycles before "no network"
+bool wifiConnected = false;
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 8000;   // 8s to try WiFi on boot
+const unsigned long WIFI_RETRY_INTERVAL_MS  = 60000;  // Retry WiFi every 60s if lost
+unsigned long lastWifiRetry = 0;
+const unsigned long WIFI_SEND_INTERVAL_MS   = 10000;  // Firebase push every 10s via WiFi
+
+// =====================================================
+// TDMA TIMING (used only in LoRa mode)
+// =====================================================
+const unsigned long TDMA_CYCLE_MS   = 12000;
+const unsigned long TDMA_SLOT_MS    = 3000;
+const unsigned long ACK_TIMEOUT_MS  = 1500;
+const unsigned long NETWORK_OK_MS   = 30000;
 const int MAX_HOPS = 3;
 
 // =====================================================
-// GATEWAY DISCOVERY / BEACON
+// GATEWAY DISCOVERY / BEACON (LoRa mode only)
 // =====================================================
-const unsigned long BEACON_TIMEOUT_MS  = 45000;  // 45s no beacon/ACK = gateway unreachable
-const unsigned long STARTUP_LISTEN_MS  = 10000;  // Listen for gateway on boot (10 seconds)
-unsigned long lastGatewayContact       = 0;       // Last beacon OR ACK from gateway
+const unsigned long BEACON_TIMEOUT_MS  = 45000;
+const unsigned long STARTUP_LISTEN_MS  = 6000;  // Shorter since WiFi already tried
+unsigned long lastGatewayContact       = 0;
 bool gatewayReachable                  = false;
 unsigned long bootMillis               = 0;
-
-// Relay mode requires BOTH conditions:
-// 1. No ACK for 5+ consecutive sends
-// 2. No gateway contact for BEACON_TIMEOUT_MS
 const int RELAY_MODE_ACK_THRESHOLD = 5;
 
 // =====================================================
@@ -82,9 +98,6 @@ unsigned long lastLedBlink = 0;
 bool ledState = false;
 unsigned long seqCounter = 0;
 int noAckCount = 0;
-
-// Track our TDMA cycle start time
-unsigned long cycleStartMillis = 0;
 
 // =====================================================
 // DUPLICATE TRACKER
@@ -173,25 +186,30 @@ bool needsMaintenance(float temp, float hum, int mq2, int flameVal) {
   return isDHTBad(temp, hum) || isMQ2Bad(mq2) || isFlameBad(flameVal);
 }
 
-// =====================================================
-// CHECK IF NODE_ID IS IN PATH (circular relay prevention)
-// Path format: "1" or "1>3" or "1>3>2"
-// =====================================================
+String esc(String s) {
+  s.replace("\\", "\\\\");
+  s.replace("\"", "\\\"");
+  s.replace("\n", " ");
+  s.replace("\r", " ");
+  return s;
+}
+
+bool isReplacementValue(String v) {
+  v.trim();
+  return (v == "Needs replacement" || v.length() == 0);
+}
+
+// Circular relay prevention
 bool isNodeInPath(String path, int nodeId) {
   String nodeStr = String(nodeId);
   int pathLen = path.length();
   int nodeStrLen = nodeStr.length();
-
   for (int i = 0; i <= pathLen - nodeStrLen; i++) {
     bool match = true;
     for (int j = 0; j < nodeStrLen; j++) {
-      if (path.charAt(i + j) != nodeStr.charAt(j)) {
-        match = false;
-        break;
-      }
+      if (path.charAt(i + j) != nodeStr.charAt(j)) { match = false; break; }
     }
     if (match) {
-      // Check that it's a whole token (bounded by start/end or '>')
       bool leftOk = (i == 0) || (path.charAt(i - 1) == '>');
       bool rightOk = (i + nodeStrLen >= pathLen) || (path.charAt(i + nodeStrLen) == '>');
       if (leftOk && rightOk) return true;
@@ -201,35 +219,62 @@ bool isNodeInPath(String path, int nodeId) {
 }
 
 // =====================================================
+// CATEGORY CLASSIFICATION
+// Same logic as gateway — needed for WiFi direct push
+// =====================================================
+String classifyCategory(String tempStr, String humStr, String smokeStr, String fireStr, String healthStr) {
+  if (healthStr.indexOf("Needs replacement") >= 0) return "Warning";
+
+  float temp = tempStr.toFloat();
+  float hum  = humStr.toFloat();
+  int smoke  = smokeStr.toInt();
+  bool flame = (fireStr == "Flame");
+
+  int fireVotes = 0, warningVotes = 0;
+
+  if (!isReplacementValue(tempStr)) {
+    if (temp >= 58.0) fireVotes++;
+    else if (temp >= 39.0) warningVotes++;
+  }
+  if (!isReplacementValue(smokeStr)) {
+    if (smoke >= 850) fireVotes++;
+    else if (smoke >= 450) warningVotes++;
+  }
+  if (!isReplacementValue(fireStr) && flame) fireVotes++;
+
+  if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
+    if (temp >= 39.0 && hum <= 25.0) warningVotes++;
+    if (temp >= 45.0 && hum <= 20.0) warningVotes++;
+  }
+
+  if (fireVotes >= 2) return "Fire";
+  if (fireVotes >= 1 && warningVotes >= 1) return "Fire";
+  if (flame && smoke >= 450) return "Fire";
+  if (flame && temp >= 39.0) return "Fire";
+  if (temp >= 65.0) return "Fire";
+  if (fireVotes == 1) return "Warning";
+  if (warningVotes >= 1) return "Warning";
+  return "Normal";
+}
+
+// =====================================================
 // LED STATUS
 // =====================================================
 void updateLED(float temp, float hum, int mq2, int flameVal) {
   bool maintenance = needsMaintenance(temp, hum, mq2, flameVal);
-  bool networkOk = (millis() - lastAckTime) < NETWORK_OK_MS;
+  bool networkOk = wifiConnected || ((millis() - lastAckTime) < NETWORK_OK_MS);
 
   if (maintenance) {
-    // Slow blink = sensor needs replacement
-    if (millis() - lastLedBlink >= 800) {
-      lastLedBlink = millis();
-      ledState = !ledState;
-      digitalWrite(LED_PIN, ledState);
-    }
+    if (millis() - lastLedBlink >= 800) { lastLedBlink = millis(); ledState = !ledState; digitalWrite(LED_PIN, ledState); }
   } else if (!networkOk) {
-    // Fast blink = no network
-    if (millis() - lastLedBlink >= 180) {
-      lastLedBlink = millis();
-      ledState = !ledState;
-      digitalWrite(LED_PIN, ledState);
-    }
+    if (millis() - lastLedBlink >= 180) { lastLedBlink = millis(); ledState = !ledState; digitalWrite(LED_PIN, ledState); }
+  } else if (wifiConnected) {
+    // Double blink = WiFi mode (blink-blink-pause)
+    unsigned long phase = (millis() / 150) % 6;
+    digitalWrite(LED_PIN, (phase == 0 || phase == 2) ? HIGH : LOW);
   } else if (!gatewayReachable) {
-    // Medium blink = in relay mode
-    if (millis() - lastLedBlink >= 400) {
-      lastLedBlink = millis();
-      ledState = !ledState;
-      digitalWrite(LED_PIN, ledState);
-    }
+    if (millis() - lastLedBlink >= 400) { lastLedBlink = millis(); ledState = !ledState; digitalWrite(LED_PIN, ledState); }
   } else {
-    // Solid = connected to gateway directly
     digitalWrite(LED_PIN, HIGH);
     ledState = true;
   }
@@ -239,61 +284,40 @@ void updateLED(float temp, float hum, int mq2, int flameVal) {
 // FEED GPS
 // =====================================================
 void feedGPS() {
-  while (gpsSerial.available()) {
-    gps.encode(gpsSerial.read());
-  }
+  while (gpsSerial.available()) gps.encode(gpsSerial.read());
 }
 
 // =====================================================
-// LORA SEND — blocking send with receive restore
-// Using blocking mode for reliable transmission
+// LORA SEND — blocking
 // =====================================================
 void sendLoRa(String packet) {
   LoRa.idle();
   LoRa.beginPacket();
   LoRa.print(packet);
-  LoRa.endPacket();      // BLOCKING — waits until fully sent
+  LoRa.endPacket();
   delay(20);
   LoRa.receive();
 }
 
 // =====================================================
-// TDMA SLOT — Check if it's this node's turn to send
+// TDMA SLOT CHECK
 // =====================================================
 bool isMySlot() {
   unsigned long cycleTime = millis() % TDMA_CYCLE_MS;
   unsigned long mySlotStart = (unsigned long)(NODE_ID - 1) * TDMA_SLOT_MS;
-  unsigned long mySlotEnd = mySlotStart + TDMA_SLOT_MS;
-  return (cycleTime >= mySlotStart && cycleTime < mySlotEnd);
-}
-
-// Returns milliseconds until this node's next slot
-unsigned long msUntilMySlot() {
-  unsigned long cycleTime = millis() % TDMA_CYCLE_MS;
-  unsigned long mySlotStart = (unsigned long)(NODE_ID - 1) * TDMA_SLOT_MS;
-
-  if (cycleTime < mySlotStart) {
-    return mySlotStart - cycleTime;
-  } else if (cycleTime < mySlotStart + TDMA_SLOT_MS) {
-    return 0;  // We're in our slot right now
-  } else {
-    // Next cycle
-    return (TDMA_CYCLE_MS - cycleTime) + mySlotStart;
-  }
+  return (cycleTime >= mySlotStart && cycleTime < mySlotStart + TDMA_SLOT_MS);
 }
 
 // =====================================================
-// WAIT FOR ACK — with GPS feeding and beacon detection
+// WAIT FOR ACK
 // =====================================================
 bool waitForAck(unsigned long mySeq) {
   unsigned long t0 = millis();
   while (millis() - t0 < ACK_TIMEOUT_MS) {
     feedGPS();
     int packetSize = LoRa.parsePacket();
-    if (!packetSize) {
-      delay(5);
-      continue;
-    }
+    if (!packetSize) { delay(5); continue; }
+
     String rx = "";
     while (LoRa.available()) rx += (char)LoRa.read();
     rx.trim();
@@ -301,14 +325,12 @@ bool waitForAck(unsigned long mySeq) {
     String key  = getField(rx, 0);
     String type = getField(rx, 1);
 
-    // Beacon received during ACK wait
     if (type == "BEACON" && key == "CENSYS_GW") {
       lastGatewayContact = millis();
       gatewayReachable = true;
       continue;
     }
 
-    // ACK for us
     if (type == "ACK" && key == NODE_PASSKEY) {
       String dest = getField(rx, 2);
       String seq  = getField(rx, 3);
@@ -325,31 +347,21 @@ bool waitForAck(unsigned long mySeq) {
 }
 
 // =====================================================
-// PROCESS INCOMING — handle beacons, ACKs, and relay
-//
-// KEY RULES:
-// 1. If gateway is reachable → DO NOT RELAY (no need)
-// 2. Only relay if this node can reach gateway AND
-//    the origin node apparently can't
-// 3. NEVER relay if own NODE_ID is in the path
-//    (prevents circular relay loops)
+// PROCESS INCOMING (relay for mesh — LoRa mode only)
 // =====================================================
 void processIncoming() {
   feedGPS();
-
   int packetSize = LoRa.parsePacket();
   if (!packetSize) return;
 
   String rx = "";
   while (LoRa.available()) rx += (char)LoRa.read();
   rx.trim();
-
   if (rx.length() < 5) return;
 
   String key  = getField(rx, 0);
   String type = getField(rx, 1);
 
-  // ===== GATEWAY BEACON =====
   if (type == "BEACON" && key == "CENSYS_GW") {
     lastGatewayContact = millis();
     gatewayReachable = true;
@@ -357,7 +369,6 @@ void processIncoming() {
     return;
   }
 
-  // ===== ACK for this node =====
   if (type == "ACK") {
     String dest = getField(rx, 2);
     if (dest.toInt() == NODE_ID) {
@@ -365,22 +376,15 @@ void processIncoming() {
       lastGatewayContact = millis();
       gatewayReachable = true;
       noAckCount = 0;
-      Serial.println("ACK received (from processIncoming)");
     }
     return;
   }
 
-  // ===== DATA PACKET — potential relay =====
   if (type != "DATA") return;
-
-  // Validate passkey
   if (!(key == "CENSYS_N1_2026" || key == "CENSYS_N2_2026" ||
-        key == "CENSYS_N3_2026" || key == "CENSYS_N4_2026")) {
-    return;
-  }
+        key == "CENSYS_N3_2026" || key == "CENSYS_N4_2026")) return;
 
   String originStr = getField(rx, 2);
-  String senderStr = getField(rx, 3);
   String seqStr    = getField(rx, 4);
   String hopsStr   = getField(rx, 5);
   String pathStr   = getField(rx, 13);
@@ -388,35 +392,16 @@ void processIncoming() {
   int origin = originStr.toInt();
   int hops   = hopsStr.toInt();
 
-  // Don't process our own packets
   if (origin == NODE_ID) return;
 
-  // Deduplicate
   String sig = key + "|" + originStr + "|" + seqStr;
   if (isSeen(sig)) return;
   addSeen(sig);
 
-  // ===== RELAY DECISION =====
-  // Rule 1: Only relay if THIS node can reach the gateway
-  if (!gatewayReachable) {
-    Serial.println("SKIP relay N" + originStr + " — can't reach gateway ourselves");
-    return;
-  }
+  if (!gatewayReachable) return;
+  if (hops >= MAX_HOPS) return;
+  if (isNodeInPath(pathStr, NODE_ID)) return;
 
-  // Rule 2: Don't relay if max hops exceeded
-  if (hops >= MAX_HOPS) {
-    Serial.println("SKIP relay N" + originStr + " — max hops (" + String(hops) + ")");
-    return;
-  }
-
-  // Rule 3: CIRCULAR RELAY PREVENTION
-  // If our NODE_ID is already in the path, don't relay (prevents N2→N3→N2 loops)
-  if (isNodeInPath(pathStr, NODE_ID)) {
-    Serial.println("SKIP relay N" + originStr + " — circular: our ID is in path: " + pathStr);
-    return;
-  }
-
-  // All checks passed — relay this packet
   String tempStr   = getField(rx, 6);
   String humStr    = getField(rx, 7);
   String mq2Str    = getField(rx, 8);
@@ -432,11 +417,9 @@ void processIncoming() {
     tempStr + "|" + humStr + "|" + mq2Str + "|" + fireStr + "|" +
     latStr + "|" + lngStr + "|" + healthStr + "|" + newPath;
 
-  // Wait for a clear channel moment (small delay based on NODE_ID)
   delay(100 + NODE_ID * 50);
   sendLoRa(relayPacket);
-
-  Serial.println("RELAYED N" + originStr + " (hops:" + String(hops + 1) + ") path:" + newPath);
+  Serial.println("RELAYED N" + originStr + " (hops:" + String(hops + 1) + ")");
 }
 
 // =====================================================
@@ -449,37 +432,105 @@ void updateGPSCache() {
     double newLng = gps.location.lng();
     if (newLat > 4.0 && newLat < 22.0 && newLng > 116.0 && newLng < 128.0) {
       if (gps.hdop.isValid() && gps.hdop.hdop() < 5.0) {
-        cachedLat = newLat;
-        cachedLng = newLng;
-        hasCachedGPS = true;
-        lastGPSFixMillis = millis();
+        cachedLat = newLat; cachedLng = newLng; hasCachedGPS = true; lastGPSFixMillis = millis();
       } else if (!hasCachedGPS) {
-        cachedLat = newLat;
-        cachedLng = newLng;
-        hasCachedGPS = true;
-        lastGPSFixMillis = millis();
+        cachedLat = newLat; cachedLng = newLng; hasCachedGPS = true; lastGPSFixMillis = millis();
       }
     }
   }
 }
 
 bool getGPSCoordinates(double &lat, double &lng, String &gpsStatus) {
-  if (gps.location.isValid()) {
-    lat = gps.location.lat();
-    lng = gps.location.lng();
-    gpsStatus = "Live";
-    return true;
+  if (gps.location.isValid()) { lat = gps.location.lat(); lng = gps.location.lng(); gpsStatus = "Live"; return true; }
+  if (hasCachedGPS && (millis() - lastGPSFixMillis) < GPS_CACHE_MAX_AGE_MS) { lat = cachedLat; lng = cachedLng; gpsStatus = "Cached"; return true; }
+  lat = 0.0; lng = 0.0; gpsStatus = "No Fix"; return false;
+}
+
+// =====================================================
+// WIFI — Try to connect
+// =====================================================
+bool tryWiFiConnect() {
+  Serial.print("WiFi: Connecting to ");
+  Serial.println(STA_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(STA_SSID, STA_PASS);
+
+  unsigned long startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt) < WIFI_CONNECT_TIMEOUT_MS) {
+    delay(200);
+    feedGPS();
+    Serial.print(".");
   }
-  if (hasCachedGPS && (millis() - lastGPSFixMillis) < GPS_CACHE_MAX_AGE_MS) {
-    lat = cachedLat;
-    lng = cachedLng;
-    gpsStatus = "Cached";
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi: CONNECTED! IP: " + WiFi.localIP().toString());
+    wifiConnected = true;
     return true;
+  } else {
+    Serial.println("WiFi: FAILED — will use LoRa TDMA instead");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    wifiConnected = false;
+    return false;
   }
-  lat = 0.0;
-  lng = 0.0;
-  gpsStatus = "No Fix";
-  return false;
+}
+
+// =====================================================
+// FIREBASE PUSH (WiFi mode)
+// Pushes to EXACT same path & format as gateway
+// so the website sees no difference.
+// =====================================================
+void pushToFirebaseViaWiFi(String tempStr, String humStr, String mq2Str,
+                            String fireStr, String latStr, String lngStr,
+                            String healthStr, String category) {
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiConnected = false;
+    return;
+  }
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  // Push to same path as gateway: /nodes/node{NODE_ID}
+  String url = String(FIREBASE_HOST) + "/nodes/node" + String(NODE_ID) + ".json?auth=" + String(FIREBASE_AUTH);
+
+  String json = "{";
+  json += "\"online\":true,";
+  json += "\"node\":" + String(NODE_ID) + ",";
+  json += "\"barangay\":\"" + NODE_BARANGAY + "\",";
+  json += "\"last_sender\":" + String(NODE_ID) + ",";
+  json += "\"seq\":" + String(seqCounter) + ",";
+  json += "\"hops\":0,";
+  json += "\"temp\":\"" + esc(tempStr) + "\",";
+  json += "\"humid\":\"" + esc(humStr) + "\",";
+  json += "\"smoke\":\"" + esc(mq2Str) + "\",";
+  json += "\"fire\":\"" + esc(fireStr) + "\",";
+  json += "\"lat\":\"" + esc(latStr) + "\",";
+  json += "\"lng\":\"" + esc(lngStr) + "\",";
+  json += "\"health\":\"" + esc(healthStr) + "\",";
+  json += "\"path\":\"" + String(NODE_ID) + "\",";
+  json += "\"category\":\"" + esc(category) + "\",";
+  json += "\"rssi\":0,";
+  json += "\"last_seen_sec\":0,";
+  json += "\"passkey\":\"" + esc(NODE_PASSKEY) + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.PUT(json);
+
+  if (httpCode > 0) {
+    Serial.println("Firebase WiFi push: HTTP " + String(httpCode));
+    lastAckTime = millis();  // Treat successful push as "connected"
+  } else {
+    Serial.println("Firebase WiFi error: " + http.errorToString(httpCode));
+  }
+
+  http.end();
 }
 
 // =====================================================
@@ -498,71 +549,74 @@ void setup() {
   delay(500);
   initGPSModule();
 
-  // LoRa init
+  Serial.println("========================================");
+  Serial.println("  CENSYS Node " + String(NODE_ID));
+  Serial.println("  Passkey: " + NODE_PASSKEY);
+  Serial.println("  Barangay: " + NODE_BARANGAY);
+  Serial.println("========================================");
+
+  // ===== STEP 1: TRY WIFI FIRST =====
+  Serial.println("STEP 1: Trying WiFi connection...");
+  bool gotWifi = tryWiFiConnect();
+
+  // ===== STEP 2: INIT LORA (always — needed for relay even in WiFi mode) =====
+  Serial.println("STEP 2: Initializing LoRa...");
   LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
   if (!LoRa.begin(433E6)) {
     Serial.println("LoRa init failed!");
-    while (1) {
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-      delay(120);
+    // If WiFi works, we can still operate without LoRa
+    if (!gotWifi) {
+      while (1) { digitalWrite(LED_PIN, !digitalRead(LED_PIN)); delay(120); }
     }
+    Serial.println("WARNING: LoRa failed but WiFi is up — operating in WiFi-only mode");
+  } else {
+    LoRa.setSpreadingFactor(10);
+    LoRa.setSignalBandwidth(125E3);
+    LoRa.setCodingRate4(8);
+    LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
+    LoRa.setPreambleLength(8);
+    LoRa.enableCrc();
+    LoRa.setGain(0);
+    LoRa.receive();
+    Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm, CRC ON");
   }
-
-  // ===== LORA SETTINGS =====
-  LoRa.setSpreadingFactor(10);
-  LoRa.setSignalBandwidth(125E3);
-  LoRa.setCodingRate4(8);
-  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
-  LoRa.setPreambleLength(8);
-  LoRa.enableCrc();
-  LoRa.setGain(0);
-
-  Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm, CRC ON");
-  LoRa.receive();
 
   randomSeed(analogRead(35) ^ (NODE_ID * 12345));
   bootMillis = millis();
 
-  // ===== GATEWAY DISCOVERY PHASE =====
-  Serial.println("========================================");
-  Serial.println("  CENSYS Node " + String(NODE_ID) + " — Scanning for gateway...");
-  Serial.println("========================================");
-
-  unsigned long scanStart = millis();
-  while (millis() - scanStart < STARTUP_LISTEN_MS) {
-    feedGPS();
-    int packetSize = LoRa.parsePacket();
-    if (packetSize) {
-      String rx = "";
-      while (LoRa.available()) rx += (char)LoRa.read();
-      rx.trim();
-      String type = getField(rx, 1);
-      String key  = getField(rx, 0);
-
-      if (type == "BEACON" && key == "CENSYS_GW") {
-        lastGatewayContact = millis();
-        lastAckTime = millis();  // Treat beacon as initial contact
-        gatewayReachable = true;
-        Serial.println(">>> Gateway FOUND! <<<");
-        break;
+  // ===== STEP 3: IF NO WIFI, SCAN FOR GATEWAY BEACON =====
+  if (!wifiConnected) {
+    Serial.println("STEP 3: Scanning for gateway beacon...");
+    unsigned long scanStart = millis();
+    while (millis() - scanStart < STARTUP_LISTEN_MS) {
+      feedGPS();
+      int packetSize = LoRa.parsePacket();
+      if (packetSize) {
+        String rx = "";
+        while (LoRa.available()) rx += (char)LoRa.read();
+        rx.trim();
+        if (getField(rx, 1) == "BEACON" && getField(rx, 0) == "CENSYS_GW") {
+          lastGatewayContact = millis();
+          lastAckTime = millis();
+          gatewayReachable = true;
+          Serial.println(">>> Gateway FOUND! <<<");
+          break;
+        }
       }
+      delay(10);
     }
-    delay(10);
   }
-
-  if (!gatewayReachable) {
-    Serial.println("Gateway not found in " + String(STARTUP_LISTEN_MS/1000) + "s scan");
-    Serial.println("Will keep listening and enter relay mode if needed");
-  }
-
-  // Calculate when our first TDMA slot starts
-  // Give each node some initial offset to avoid boot-time collisions
-  cycleStartMillis = millis();
 
   Serial.println("----------------------------------------");
-  Serial.println("Node " + String(NODE_ID) + " READY");
-  Serial.println("TDMA slot: " + String((NODE_ID-1)*3) + "s - " + String(NODE_ID*3) + "s in 12s cycle");
-  Serial.println("Gateway: " + String(gatewayReachable ? "CONNECTED" : "NOT FOUND"));
+  if (wifiConnected) {
+    Serial.println("MODE: WiFi Direct → Firebase");
+    Serial.println("IP: " + WiFi.localIP().toString());
+    Serial.println("Push interval: " + String(WIFI_SEND_INTERVAL_MS / 1000) + "s");
+  } else {
+    Serial.println("MODE: LoRa TDMA → Gateway");
+    Serial.println("TDMA slot: " + String((NODE_ID-1)*3) + "s - " + String(NODE_ID*3) + "s");
+    Serial.println("Gateway: " + String(gatewayReachable ? "FOUND" : "NOT FOUND"));
+  }
   Serial.println("----------------------------------------");
 }
 
@@ -573,56 +627,119 @@ void loop() {
   feedGPS();
   updateGPSCache();
 
-  // ===== UPDATE GATEWAY REACHABILITY =====
-  // Gateway is unreachable if we haven't heard ANY contact (beacon or ACK)
-  // for BEACON_TIMEOUT_MS AND we've had enough consecutive ACK failures
-  if (gatewayReachable) {
-    if ((millis() - lastGatewayContact > BEACON_TIMEOUT_MS) &&
-        (noAckCount >= RELAY_MODE_ACK_THRESHOLD)) {
-      gatewayReachable = false;
-      Serial.println("========================================");
-      Serial.println("  GATEWAY LOST — Relay mode active");
-      Serial.println("  No contact for " + String(BEACON_TIMEOUT_MS/1000) + "s");
-      Serial.println("  ACK failures: " + String(noAckCount));
-      Serial.println("========================================");
-    }
-  } else {
-    // Check if gateway came back (via beacon/ACK in processIncoming)
-    if (millis() - lastGatewayContact < BEACON_TIMEOUT_MS && noAckCount == 0) {
-      gatewayReachable = true;
-      Serial.println(">>> Gateway RECOVERED! <<<");
+  // ===== CHECK WIFI STATUS =====
+  if (wifiConnected && WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi: CONNECTION LOST — switching to LoRa TDMA");
+    wifiConnected = false;
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    // Gateway might be reachable via LoRa
+    LoRa.receive();
+  }
+
+  // ===== RETRY WIFI IF LOST =====
+  if (!wifiConnected && (millis() - lastWifiRetry > WIFI_RETRY_INTERVAL_MS)) {
+    lastWifiRetry = millis();
+    Serial.println("WiFi: Retrying connection...");
+    if (tryWiFiConnect()) {
+      Serial.println("WiFi: RECOVERED — switching back to WiFi mode");
     }
   }
 
-  // ===== PROCESS INCOMING (beacons, ACKs, relay packets) =====
-  processIncoming();
+  // =============================================================
+  //  MODE A: WiFi Direct → Firebase
+  //  Node pushes data directly to Firebase.
+  //  Website/dashboard sees it as if gateway pushed it.
+  // =============================================================
+  if (wifiConnected) {
+    // Still process incoming LoRa (help relay for other nodes)
+    processIncoming();
 
-  // ===== TDMA: Only send during our time slot =====
-  if (!isMySlot()) {
-    // Not our turn — just listen and process incoming
-    static unsigned long lastLedUpdate = 0;
-    if (millis() - lastLedUpdate >= 500) {
-      lastLedUpdate = millis();
-      float t = dht.readTemperature();
-      float h = dht.readHumidity();
-      int s = analogRead(MQ2_PIN);
-      int f = digitalRead(FLAME_PIN);
+    // Send data via WiFi at fixed interval
+    if (millis() - lastSendTime >= WIFI_SEND_INTERVAL_MS) {
+      lastSendTime = millis();
+      seqCounter++;
+
+      float temp = dht.readTemperature();
+      float hum  = dht.readHumidity();
+      int mq2Raw = analogRead(MQ2_PIN);
+      int flameVal = digitalRead(FLAME_PIN);
+
+      double lat = 0.0, lng = 0.0;
+      String gpsStatus = "No Fix";
+      getGPSCoordinates(lat, lng, gpsStatus);
+      bool gpsLive = gps.location.isValid();
+      bool gpsCached = (hasCachedGPS && !gpsLive);
+
+      String tempStr = isDHTBad(temp, hum) ? "Needs replacement" : String(temp, 1);
+      String humStr  = isDHTBad(temp, hum) ? "Needs replacement" : String(hum, 1);
+      String mq2Str  = isMQ2Bad(mq2Raw) ? "Needs replacement" : String(mq2Raw);
+      String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal);
+      String healthStr = sensorHealthText(temp, hum, mq2Raw, flameVal, gpsLive, gpsCached);
+
+      // Classify category (same logic as gateway)
+      String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+
+      Serial.println("==== WiFi TX Seq:" + String(seqCounter) + " ====");
+      Serial.println("T:" + tempStr + " H:" + humStr + " S:" + mq2Str + " F:" + fireStr);
+      Serial.println("Cat:" + category + " GPS:" + gpsStatus);
+
+      pushToFirebaseViaWiFi(tempStr, humStr, mq2Str, fireStr,
+                             String(lat, 6), String(lng, 6),
+                             healthStr, category);
+    }
+
+    // LED update
+    static unsigned long lastLedW = 0;
+    if (millis() - lastLedW >= 300) {
+      lastLedW = millis();
+      float t = dht.readTemperature(); float h = dht.readHumidity();
+      int s = analogRead(MQ2_PIN); int f = digitalRead(FLAME_PIN);
       updateLED(t, h, s, f);
     }
     return;
   }
 
-  // ===== IN OUR SLOT — But only send once per cycle =====
-  unsigned long currentCycle = millis() / TDMA_CYCLE_MS;
-  static unsigned long lastSentCycle = 0;
+  // =============================================================
+  //  MODE B: LoRa TDMA → Gateway
+  //  Standard TDMA time-slotted transmission.
+  // =============================================================
 
-  if (currentCycle == lastSentCycle) {
-    // Already sent this cycle
+  // Update gateway reachability
+  if (gatewayReachable) {
+    if ((millis() - lastGatewayContact > BEACON_TIMEOUT_MS) &&
+        (noAckCount >= RELAY_MODE_ACK_THRESHOLD)) {
+      gatewayReachable = false;
+      Serial.println("GATEWAY LOST — relay mode active");
+    }
+  } else {
+    if (millis() - lastGatewayContact < BEACON_TIMEOUT_MS && noAckCount == 0) {
+      gatewayReachable = true;
+      Serial.println(">>> Gateway RECOVERED <<<");
+    }
+  }
+
+  processIncoming();
+
+  // Only send during our TDMA slot
+  if (!isMySlot()) {
+    static unsigned long lastLedL = 0;
+    if (millis() - lastLedL >= 500) {
+      lastLedL = millis();
+      float t = dht.readTemperature(); float h = dht.readHumidity();
+      int s = analogRead(MQ2_PIN); int f = digitalRead(FLAME_PIN);
+      updateLED(t, h, s, f);
+    }
     return;
   }
+
+  // One send per cycle
+  unsigned long currentCycle = millis() / TDMA_CYCLE_MS;
+  static unsigned long lastSentCycle = 0;
+  if (currentCycle == lastSentCycle) return;
   lastSentCycle = currentCycle;
 
-  // ===== SEND DATA =====
+  // SEND DATA via LoRa
   seqCounter++;
 
   float temp = dht.readTemperature();
@@ -632,11 +749,9 @@ void loop() {
 
   double lat = 0.0, lng = 0.0;
   String gpsStatus = "No Fix";
-  bool hasGPS = getGPSCoordinates(lat, lng, gpsStatus);
+  getGPSCoordinates(lat, lng, gpsStatus);
   bool gpsLive = gps.location.isValid();
-  bool gpsCached = (hasGPS && !gpsLive);
-
-  int satCount = gps.satellites.isValid() ? gps.satellites.value() : 0;
+  bool gpsCached = (hasCachedGPS && !gpsLive);
 
   String tempStr = isDHTBad(temp, hum) ? "Needs replacement" : String(temp, 1);
   String humStr  = isDHTBad(temp, hum) ? "Needs replacement" : String(hum, 1);
@@ -655,9 +770,8 @@ void loop() {
   String sig = NODE_PASSKEY + "|" + String(NODE_ID) + "|" + String(seqCounter);
   addSeen(sig);
 
-  Serial.println("==== TX [SLOT " + String(NODE_ID) + "] Seq:" + String(seqCounter) + " ====");
+  Serial.println("==== LoRa TX [SLOT " + String(NODE_ID) + "] Seq:" + String(seqCounter) + " ====");
   Serial.println("T:" + tempStr + " H:" + humStr + " S:" + mq2Str + " F:" + fireStr);
-  Serial.println("GPS:" + gpsStatus + " Sat:" + String(satCount));
   Serial.println("GW:" + String(gatewayReachable ? "DIRECT" : "RELAY"));
 
   sendLoRa(payload);
@@ -665,26 +779,18 @@ void loop() {
 
   if (ackOk) {
     noAckCount = 0;
-    Serial.println("ACK: OK (direct from gateway)");
+    Serial.println("ACK: OK");
   } else {
     noAckCount++;
     Serial.println("ACK: MISS (" + String(noAckCount) + " consecutive)");
-
-    // ONE retry within our slot window (we still have time)
     if (noAckCount <= 3) {
       delay(200 + NODE_ID * 50);
-      Serial.println("RETRY...");
       sendLoRa(payload);
       ackOk = waitForAck(seqCounter);
-      if (ackOk) {
-        noAckCount = 0;
-        Serial.println("RETRY ACK: OK");
-      } else {
-        Serial.println("RETRY ACK: MISS");
-      }
+      if (ackOk) { noAckCount = 0; Serial.println("RETRY ACK: OK"); }
+      else Serial.println("RETRY ACK: MISS");
     }
   }
 
-  // Update LED
   updateLED(temp, hum, mq2Raw, flameVal);
 }
