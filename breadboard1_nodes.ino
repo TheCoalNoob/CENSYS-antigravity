@@ -351,10 +351,73 @@ bool waitForAck(unsigned long mySeq) {
 }
 
 // =====================================================
-// PROCESS INCOMING — relay for mesh
-// Relays to gateway if this node can reach it.
-// In LoRa mode, any valid CENSYS node data with
-// matching passkey pattern gets relayed.
+// PUSH ANOTHER NODE'S DATA TO FIREBASE (WiFi relay)
+// When this node has WiFi and receives LoRa data from
+// a node that doesn't have WiFi, push it to Firebase
+// on behalf of that node — so the website sees it.
+// =====================================================
+void pushOtherNodeToFirebase(int originNode, String passkey,
+                              String tempStr, String humStr, String mq2Str,
+                              String fireStr, String latStr, String lngStr,
+                              String healthStr, String pathStr) {
+  if (WiFi.status() != WL_CONNECTED) { wifiConnected = false; return; }
+
+  String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  String url = String(FIREBASE_HOST) + "/nodes/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
+
+  // Determine barangay from node assignment (same mapping as gateway)
+  String brgy = NODE_BARANGAY;  // Default — will be overridden if we know the mapping
+  // Use a simple lookup since we know the 4 nodes
+  // In production, this could be a config array
+  // For now, use the same barangay — the gateway has the canonical mapping
+
+  String json = "{";
+  json += "\"online\":true,";
+  json += "\"node\":" + String(originNode) + ",";
+  json += "\"barangay\":\"" + brgy + "\",";
+  json += "\"last_sender\":" + String(NODE_ID) + ",";
+  json += "\"seq\":0,";
+  json += "\"hops\":0,";
+  json += "\"temp\":\"" + esc(tempStr) + "\",";
+  json += "\"humid\":\"" + esc(humStr) + "\",";
+  json += "\"smoke\":\"" + esc(mq2Str) + "\",";
+  json += "\"fire\":\"" + esc(fireStr) + "\",";
+  json += "\"lat\":\"" + esc(latStr) + "\",";
+  json += "\"lng\":\"" + esc(lngStr) + "\",";
+  json += "\"health\":\"" + esc(healthStr) + "\",";
+  json += "\"path\":\"" + esc(pathStr) + ">" + String(NODE_ID) + "(wifi)\",";
+  json += "\"category\":\"" + esc(category) + "\",";
+  json += "\"rssi\":0,";
+  json += "\"last_seen_sec\":0,";
+  json += "\"passkey\":\"" + esc(passkey) + "\",";
+  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+  json += "}";
+
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+  int httpCode = http.PUT(json);
+
+  if (httpCode > 0) {
+    Serial.println("WiFi RELAY N" + String(originNode) + " → Firebase: HTTP " + String(httpCode));
+  } else {
+    Serial.println("WiFi RELAY N" + String(originNode) + " Firebase error");
+  }
+  http.end();
+}
+
+// =====================================================
+// PROCESS INCOMING — LoRa listener
+//
+// WiFi mode:  LISTEN only. If we receive another node's
+//             data via LoRa, push it to Firebase for them.
+//             We NEVER transmit on LoRa in WiFi mode.
+//
+// LoRa mode:  Listen + relay via LoRa to gateway.
 // =====================================================
 void processIncoming() {
   if (!loraInitOk) return;
@@ -407,12 +470,6 @@ void processIncoming() {
   if (isSeen(sig)) return;
   addSeen(sig);
 
-  // Only relay if this node can reach gateway
-  if (!gatewayReachable) return;
-  if (hops >= MAX_HOPS) return;
-  // Circular prevention
-  if (isNodeInPath(pathStr, NODE_ID)) return;
-
   String tempStr   = getField(rx, 6);
   String humStr    = getField(rx, 7);
   String mq2Str    = getField(rx, 8);
@@ -420,6 +477,24 @@ void processIncoming() {
   String latStr    = getField(rx, 10);
   String lngStr    = getField(rx, 11);
   String healthStr = getField(rx, 12);
+
+  // ============================================
+  // WiFi mode: push the other node's data to
+  // Firebase directly (no LoRa transmit needed)
+  // ============================================
+  if (wifiConnected) {
+    Serial.println("WiFi RELAY: received N" + originStr + " via LoRa → pushing to Firebase");
+    pushOtherNodeToFirebase(origin, key, tempStr, humStr, mq2Str,
+                             fireStr, latStr, lngStr, healthStr, pathStr);
+    return;
+  }
+
+  // ============================================
+  // LoRa mode: relay via LoRa to gateway
+  // ============================================
+  if (!gatewayReachable) return;
+  if (hops >= MAX_HOPS) return;
+  if (isNodeInPath(pathStr, NODE_ID)) return;
 
   String newPath = pathStr + ">" + String(NODE_ID);
   String relayPacket =
