@@ -822,15 +822,15 @@ void setup() {
   }
 
   // ===== MAXIMIZE LORA RANGE =====
-  LoRa.setSpreadingFactor(10);                    // SF10 = great range + 4x faster than SF12 (avoids collisions)
+  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
   LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
-  LoRa.setCodingRate4(5);                          // 4/5 = good error correction, faster air time
+  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
   LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
-  LoRa.setPreambleLength(8);                       // Standard preamble length
+  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
   LoRa.enableCrc();                                // CRC catches corrupted packets automatically
   LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
 
-  Serial.println("LoRa: SF10, BW125k, CR4/5, TX20dBm, Preamble8, CRC ON");
+  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
 
   // Put LoRa in continuous receive mode
   LoRa.receive();
