@@ -43,6 +43,7 @@ const char* STA_PASS = "444everydayOK*";
 const unsigned long FIREBASE_PUSH_INTERVAL_MS = 3000;
 unsigned long lastFirebasePush = 0;
 bool firebaseDataDirty = false;
+bool firebaseUnregDirty = false;
 
 WebServer server(80);
 
@@ -96,6 +97,79 @@ struct NodeData {
 NodeData nodes[5];   // use index 1..4
 
 const unsigned long NODE_TIMEOUT_MS = 30000;
+
+// =====================================================
+// TEMPORAL STABILITY TRACKER (prevents false fire alarms)
+// =====================================================
+const int STABILITY_WINDOW = 3;
+String categoryHistory[5][3];  // [nodeId][history slot]
+int categoryHistoryIdx[5] = {0, 0, 0, 0, 0};
+
+void addCategoryHistory(int nodeId, String cat) {
+  if (nodeId < 1 || nodeId > 4) return;
+  categoryHistory[nodeId][categoryHistoryIdx[nodeId]] = cat;
+  categoryHistoryIdx[nodeId] = (categoryHistoryIdx[nodeId] + 1) % STABILITY_WINDOW;
+}
+
+// Returns true if Fire should be accepted (2 of last 3 readings are Fire or Warning)
+bool isFireStable(int nodeId) {
+  if (nodeId < 1 || nodeId > 4) return false;
+  int votes = 0;
+  for (int i = 0; i < STABILITY_WINDOW; i++) {
+    if (categoryHistory[nodeId][i] == "Fire" || categoryHistory[nodeId][i] == "Warning") {
+      votes++;
+    }
+  }
+  return votes >= 2;
+}
+
+// =====================================================
+// UNREGISTERED NODE DATA (up to 8 tracked)
+// =====================================================
+const int MAX_UNREG = 8;
+struct UnregNodeData {
+  bool active;
+  String passkey;
+  int nodeId;
+  String temp;
+  String humid;
+  String smoke;
+  String fire;
+  String health;
+  int rssi;
+  int hops;
+  String path;
+  unsigned long lastSeenMillis;
+};
+
+UnregNodeData unregNodes[MAX_UNREG];
+int unregCount = 0;
+
+int findOrAddUnreg(String key, int nodeId) {
+  // Find existing
+  for (int i = 0; i < MAX_UNREG; i++) {
+    if (unregNodes[i].active && unregNodes[i].passkey == key && unregNodes[i].nodeId == nodeId) {
+      return i;
+    }
+  }
+  // Find empty slot
+  for (int i = 0; i < MAX_UNREG; i++) {
+    if (!unregNodes[i].active) {
+      unregNodes[i].active = true;
+      return i;
+    }
+  }
+  // Evict oldest
+  int oldest = 0;
+  unsigned long oldestTime = unregNodes[0].lastSeenMillis;
+  for (int i = 1; i < MAX_UNREG; i++) {
+    if (unregNodes[i].lastSeenMillis < oldestTime) {
+      oldestTime = unregNodes[i].lastSeenMillis;
+      oldest = i;
+    }
+  }
+  return oldest;
+}
 
 // =====================================================
 // DUPLICATE TRACKER
@@ -187,6 +261,7 @@ void sendAck(String key, int originNode, String seqStr) {
   LoRa.beginPacket();
   LoRa.print(ack);
   LoRa.endPacket();
+  LoRa.receive();  // Return to receive mode after sending
 
   Serial.print("Sent ACK: ");
   Serial.println(ack);
@@ -207,6 +282,114 @@ String esc(String s) {
 bool isReplacementValue(String v) {
   v.trim();
   return (v == "Needs replacement" || v.length() == 0);
+}
+
+// =====================================================
+// NOISE VALIDATION — detect garbage LoRa data
+// =====================================================
+bool isValidFloat(String s) {
+  if (s.length() == 0) return false;
+  if (s == "Needs replacement") return true;
+  bool hasDot = false;
+  int start = 0;
+  if (s.charAt(0) == '-') start = 1;
+  if (start >= (int)s.length()) return false;
+  for (int i = start; i < (int)s.length(); i++) {
+    char c = s.charAt(i);
+    if (c == '.') {
+      if (hasDot) return false;
+      hasDot = true;
+    } else if (c < '0' || c > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool isValidInt(String s) {
+  if (s.length() == 0) return false;
+  if (s == "Needs replacement") return true;
+  int start = 0;
+  if (s.charAt(0) == '-') start = 1;
+  if (start >= (int)s.length()) return false;
+  for (int i = start; i < (int)s.length(); i++) {
+    if (s.charAt(i) < '0' || s.charAt(i) > '9') return false;
+  }
+  return true;
+}
+
+bool hasNonPrintable(String s) {
+  for (int i = 0; i < (int)s.length(); i++) {
+    char c = s.charAt(i);
+    if (c < 32 && c != '\t') return true;
+    if ((unsigned char)c > 126) return true;
+  }
+  return false;
+}
+
+int countFields(String data) {
+  int count = 1;
+  for (int i = 0; i < (int)data.length(); i++) {
+    if (data.charAt(i) == '|') count++;
+  }
+  return count;
+}
+
+// Returns true if the packet looks like noise/garbage
+bool isNoisePacket(String rx, String tempStr, String humStr, String smokeStr, String fireStr, String originStr, String latStr, String lngStr) {
+  // Check for non-printable chars in the whole packet
+  if (hasNonPrintable(rx)) {
+    Serial.println("NOISE: Non-printable characters detected");
+    return true;
+  }
+
+  // Must have exactly 14 fields
+  if (countFields(rx) != 14) {
+    Serial.println("NOISE: Wrong field count (" + String(countFields(rx)) + " instead of 14)");
+    return true;
+  }
+
+  // Validate origin node ID
+  if (!isValidInt(originStr) || originStr.toInt() < 1) {
+    Serial.println("NOISE: Invalid origin node ID: " + originStr);
+    return true;
+  }
+
+  // Validate temp
+  if (!isValidFloat(tempStr)) {
+    Serial.println("NOISE: Invalid temp value: " + tempStr);
+    return true;
+  }
+
+  // Validate humidity
+  if (!isValidFloat(humStr)) {
+    Serial.println("NOISE: Invalid humidity value: " + humStr);
+    return true;
+  }
+
+  // Validate smoke (MQ2 reading = integer)
+  if (!isValidInt(smokeStr)) {
+    Serial.println("NOISE: Invalid smoke value: " + smokeStr);
+    return true;
+  }
+
+  // Validate fire sensor
+  if (fireStr != "Flame" && fireStr != "None" && fireStr != "Needs replacement") {
+    Serial.println("NOISE: Invalid fire value: " + fireStr);
+    return true;
+  }
+
+  // Validate lat/lng (allow 0.0 for no GPS fix)
+  if (!isValidFloat(latStr)) {
+    Serial.println("NOISE: Invalid latitude: " + latStr);
+    return true;
+  }
+  if (!isValidFloat(lngStr)) {
+    Serial.println("NOISE: Invalid longitude: " + lngStr);
+    return true;
+  }
+
+  return false;  // Passed all checks — not noise
 }
 
 // =====================================================
@@ -353,12 +536,61 @@ void pushGatewayToFirebase() {
   http.end();
 }
 
+void pushUnregToFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  for (int i = 0; i < MAX_UNREG; i++) {
+    if (!unregNodes[i].active) continue;
+    // Only push if seen within last 60 seconds
+    if ((millis() - unregNodes[i].lastSeenMillis) > 60000) continue;
+
+    HTTPClient http;
+    WiFiClientSecure client;
+    client.setInsecure();
+
+    String nodeKey = "unreg_" + String(i) + "_n" + String(unregNodes[i].nodeId);
+    String url = String(FIREBASE_HOST) + "/unregistered_nodes/" + nodeKey + ".json?auth=" + String(FIREBASE_AUTH);
+
+    unsigned long ageSec = (millis() - unregNodes[i].lastSeenMillis) / 1000;
+
+    String json = "{";
+    json += "\"active\":true,";
+    json += "\"node\":" + String(unregNodes[i].nodeId) + ",";
+    json += "\"passkey\":\"" + esc(unregNodes[i].passkey) + "\",";
+    json += "\"temp\":\"" + esc(unregNodes[i].temp) + "\",";
+    json += "\"humid\":\"" + esc(unregNodes[i].humid) + "\",";
+    json += "\"smoke\":\"" + esc(unregNodes[i].smoke) + "\",";
+    json += "\"fire\":\"" + esc(unregNodes[i].fire) + "\",";
+    json += "\"health\":\"" + esc(unregNodes[i].health) + "\",";
+    json += "\"rssi\":" + String(unregNodes[i].rssi) + ",";
+    json += "\"hops\":" + String(unregNodes[i].hops) + ",";
+    json += "\"path\":\"" + esc(unregNodes[i].path) + "\",";
+    json += "\"last_seen_sec\":" + String(ageSec) + ",";
+    json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+    json += "}";
+
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.PUT(json);
+
+    if (httpCode > 0) {
+      Serial.print("Firebase unreg " + nodeKey + " push: ");
+      Serial.println(httpCode);
+    } else {
+      Serial.print("Firebase unreg " + nodeKey + " error: ");
+      Serial.println(http.errorToString(httpCode));
+    }
+
+    http.end();
+  }
+}
+
 void pushAllToFirebase() {
   for (int i = 1; i <= 4; i++) {
     pushNodeToFirebase(i);
   }
   pushGatewayToFirebase();
-  Serial.println("Firebase: All data pushed");
+  Serial.println("Firebase: All registered data pushed");
 }
 
 // =====================================================
@@ -555,9 +787,20 @@ void setup() {
     nodes[i].category = "Normal";
     nodes[i].rssi = 0;
     nodes[i].lastSeenMillis = 0;
+
+    // Init category history
+    for (int j = 0; j < STABILITY_WINDOW; j++) {
+      categoryHistory[i][j] = "Normal";
+    }
   }
 
-  // LoRa init
+  // Init unregistered nodes
+  for (int i = 0; i < MAX_UNREG; i++) {
+    unregNodes[i].active = false;
+    unregNodes[i].lastSeenMillis = 0;
+  }
+
+  // LoRa init with MAXIMUM RANGE settings
   LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
   if (!LoRa.begin(433E6)) {
     Serial.println("LoRa init failed!");
@@ -566,6 +809,20 @@ void setup() {
       delay(120);
     }
   }
+
+  // ===== MAXIMIZE LORA RANGE =====
+  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
+  LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
+  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
+  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
+  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
+  LoRa.enableCrc();                                // CRC catches corrupted packets automatically
+  LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
+
+  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
+
+  // Put LoRa in continuous receive mode
+  LoRa.receive();
 
   // WiFi: AP + Station mode
   WiFi.mode(WIFI_AP_STA);
@@ -594,7 +851,7 @@ void setup() {
   }
 
   Serial.println("--------------------------------");
-  Serial.println("Breadboard 2 Gateway Ready (Firebase Enabled)");
+  Serial.println("Breadboard 2 Gateway Ready (Firebase + LoRa Optimized)");
   Serial.print("Gateway AP IP: ");
   Serial.println(WiFi.softAPIP());
 
@@ -614,9 +871,13 @@ void loop() {
   server.handleClient();
   updateGatewayLED();
 
-  // Periodic Firebase push
+  // Periodic Firebase push for registered nodes
   if (firebaseDataDirty && (millis() - lastFirebasePush >= FIREBASE_PUSH_INTERVAL_MS)) {
     pushAllToFirebase();
+    if (firebaseUnregDirty) {
+      pushUnregToFirebase();
+      firebaseUnregDirty = false;
+    }
     lastFirebasePush = millis();
     firebaseDataDirty = false;
   }
@@ -630,16 +891,20 @@ void loop() {
 
   int rssi = LoRa.packetRssi();
 
-  String key  = getField(rx, 0);
-  String type = getField(rx, 1);
-
-  if (!isRegisteredKey(key)) {
+  // Quick check: reject obviously too-short or too-long packets
+  if (rx.length() < 10 || rx.length() > 500) {
     Serial.println("--------------------------------");
-    Serial.println("Rejected packet: Invalid passkey");
+    Serial.println("Rejected packet: Invalid length (" + String(rx.length()) + ")");
     return;
   }
 
-  if (type != "DATA") return;
+  String key  = getField(rx, 0);
+  String type = getField(rx, 1);
+
+  if (type != "DATA") {
+    // Could be an ACK or other type — ignore silently
+    return;
+  }
 
   String originStr = getField(rx, 2);
   String senderStr = getField(rx, 3);
@@ -654,11 +919,48 @@ void loop() {
   String healthStr = getField(rx, 12);
   String pathStr   = getField(rx, 13);
 
+  // ===== NOISE FILTER: reject garbage data =====
+  if (isNoisePacket(rx, tempStr, humStr, mq2Str, fireStr, originStr, latStr, lngStr)) {
+    Serial.println("--------------------------------");
+    Serial.println("REJECTED: Noise/garbage packet detected");
+    Serial.println("Raw: " + rx.substring(0, min((int)rx.length(), 80)));
+    return;
+  }
+
   int originNode = originStr.toInt();
   int lastSender = senderStr.toInt();
   unsigned long seq = seqStr.toInt();
   int hops = hopsStr.toInt();
 
+  // ===== HANDLE UNREGISTERED NODES =====
+  if (!isRegisteredKey(key)) {
+    Serial.println("--------------------------------");
+    Serial.println("UNREGISTERED NODE detected (valid data, unknown passkey)");
+    Serial.print("Passkey: "); Serial.println(key);
+    Serial.print("Node ID: "); Serial.println(originNode);
+
+    int slot = findOrAddUnreg(key, originNode);
+    unregNodes[slot].active = true;
+    unregNodes[slot].passkey = key;
+    unregNodes[slot].nodeId = originNode;
+    unregNodes[slot].temp = tempStr;
+    unregNodes[slot].humid = humStr;
+    unregNodes[slot].smoke = mq2Str;
+    unregNodes[slot].fire = fireStr;
+    unregNodes[slot].health = healthStr;
+    unregNodes[slot].rssi = rssi;
+    unregNodes[slot].hops = hops;
+    unregNodes[slot].path = pathStr;
+    unregNodes[slot].lastSeenMillis = millis();
+
+    firebaseUnregDirty = true;
+    firebaseDataDirty = true;  // Trigger push cycle
+
+    // Do NOT send ACK to unregistered nodes
+    return;
+  }
+
+  // ===== REGISTERED NODE HANDLING =====
   if (originNode < 1 || originNode > 4) {
     Serial.println("--------------------------------");
     Serial.println("Rejected packet: Invalid node ID");
@@ -673,7 +975,20 @@ void loop() {
   }
   addSeen(sig);
 
-  String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+  // Classify category
+  String rawCategory = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+
+  // ===== TEMPORAL STABILITY: prevent false fire from noise =====
+  addCategoryHistory(originNode, rawCategory);
+  String finalCategory = rawCategory;
+
+  if (rawCategory == "Fire") {
+    if (!isFireStable(originNode)) {
+      // Not enough consecutive fire/warning readings — downgrade to Warning
+      finalCategory = "Warning";
+      Serial.println("STABILITY: Fire downgraded to Warning (need 2 of 3 consistent readings)");
+    }
+  }
 
   nodes[originNode].online = true;
   nodes[originNode].passkey = key;
@@ -689,7 +1004,7 @@ void loop() {
   nodes[originNode].lng = lngStr;
   nodes[originNode].health = healthStr;
   nodes[originNode].path = pathStr;
-  nodes[originNode].category = category;
+  nodes[originNode].category = finalCategory;
   nodes[originNode].rssi = rssi;
   nodes[originNode].lastSeenMillis = millis();
 
@@ -709,7 +1024,8 @@ void loop() {
   Serial.print("Latitude: "); Serial.println(latStr);
   Serial.print("Longitude: "); Serial.println(lngStr);
   Serial.print("Health: "); Serial.println(healthStr);
-  Serial.print("Category: "); Serial.println(category);
+  Serial.print("Raw Category: "); Serial.println(rawCategory);
+  Serial.print("Final Category: "); Serial.println(finalCategory);
   Serial.print("Path: "); Serial.println(pathStr);
   Serial.print("RSSI: "); Serial.println(rssi);
 

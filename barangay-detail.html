@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,7 +10,10 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    .page-content { padding: 24px 0 40px; }
+    .page-content {
+      padding: 24px 0 40px;
+    }
+
     .back-link {
       display: inline-flex;
       align-items: center;
@@ -20,7 +24,11 @@
       margin-bottom: 16px;
       transition: color var(--transition);
     }
-    .back-link:hover { color: var(--brand); }
+
+    .back-link:hover {
+      color: var(--brand);
+    }
+
     .page-header {
       display: flex;
       flex-wrap: wrap;
@@ -29,27 +37,36 @@
       gap: 16px;
       margin-bottom: 24px;
     }
+
     .page-header__title {
       font-size: 28px;
       font-weight: 800;
     }
+
     .page-header__sub {
       color: var(--text-secondary);
       font-size: 14px;
       margin-top: 4px;
     }
+
     .map-section {
       margin-bottom: 24px;
     }
+
     .map-container {
       height: 480px;
     }
+
     @media (min-height: 800px) {
-      .map-container { height: 55vh; }
+      .map-container {
+        height: 55vh;
+      }
     }
+
     .nodes-panel {
       margin-top: 24px;
     }
+
     .node-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -58,17 +75,21 @@
       margin-bottom: 16px;
       transition: all var(--transition);
     }
+
     .node-card:hover {
       box-shadow: var(--shadow-md);
     }
+
     .node-card--fire {
       border-color: var(--fire-border);
       border-width: 2px;
     }
+
     .node-card--warn {
       border-color: var(--warn-border);
       border-width: 2px;
     }
+
     .node-card__header {
       display: flex;
       align-items: center;
@@ -76,18 +97,22 @@
       gap: 10px;
       margin-bottom: 14px;
     }
+
     .node-card__title {
       font-size: 18px;
       font-weight: 700;
     }
+
     .node-card__grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 10px;
     }
+
     .node-card__field {
       padding: 8px 0;
     }
+
     .node-card__label {
       font-size: 11px;
       font-weight: 600;
@@ -95,16 +120,19 @@
       letter-spacing: 0.5px;
       color: var(--text-muted);
     }
+
     .node-card__value {
       font-size: 15px;
       font-weight: 600;
       margin-top: 2px;
     }
+
     .leaflet-popup .popup-title {
       font-weight: 700;
       font-size: 15px;
       margin-bottom: 6px;
     }
+
     .leaflet-popup .popup-row {
       display: flex;
       justify-content: space-between;
@@ -112,16 +140,20 @@
       font-size: 13px;
       border-bottom: 1px solid #f0f0f0;
     }
+
     .leaflet-popup .popup-row:last-child {
       border-bottom: none;
     }
+
     .leaflet-popup .popup-label {
       color: #6b7280;
       font-weight: 500;
     }
+
     .leaflet-popup .popup-value {
       font-weight: 600;
     }
+
     .legend {
       display: flex;
       gap: 16px;
@@ -129,19 +161,22 @@
       margin-top: 12px;
       font-size: 13px;
     }
+
     .legend__item {
       display: flex;
       align-items: center;
       gap: 6px;
     }
+
     .legend__dot {
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      border: 2px solid rgba(0,0,0,0.15);
+      border: 2px solid rgba(0, 0, 0, 0.15);
     }
   </style>
 </head>
+
 <body>
   <div class="page-wrapper">
     <!-- NAVBAR -->
@@ -380,7 +415,7 @@
 
       container.innerHTML = entries.map(([key, node]) => {
         const borderClass = node.category === 'Fire' ? 'node-card--fire' :
-                           node.category === 'Warning' ? 'node-card--warn' : '';
+          node.category === 'Warning' ? 'node-card--warn' : '';
 
         const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
         const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
@@ -504,4 +539,5 @@
     });
   </script>
 </body>
+
 </html>

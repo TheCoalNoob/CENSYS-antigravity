@@ -42,6 +42,16 @@ function listenToGateway(callback) {
   return () => ref.off('value');
 }
 
+// Listen to unregistered nodes (nodes with unknown passkeys)
+function listenToUnregisteredNodes(callback) {
+  const ref = database.ref('unregistered_nodes');
+  ref.on('value', (snapshot) => {
+    const data = snapshot.val() || {};
+    callback(data);
+  });
+  return () => ref.off('value');
+}
+
 // =====================================================
 // Session helpers
 // =====================================================

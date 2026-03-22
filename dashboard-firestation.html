@@ -144,6 +144,137 @@
     .silence-btn-area {
       margin-top: 16px;
     }
+
+    /* Unregistered Nodes Section */
+    .unreg-section {
+      margin-top: 32px;
+      margin-bottom: 24px;
+    }
+    .unreg-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: all 0.2s var(--ease);
+      user-select: none;
+    }
+    .unreg-toggle:hover {
+      border-color: var(--text-muted);
+      box-shadow: var(--shadow-sm);
+    }
+    .unreg-toggle__left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .unreg-toggle__title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .unreg-toggle__count {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .unreg-toggle__arrow {
+      font-size: 16px;
+      transition: transform 0.2s var(--ease);
+      color: var(--text-muted);
+    }
+    .unreg-toggle__arrow.open {
+      transform: rotate(180deg);
+    }
+    .unreg-body {
+      display: none;
+      margin-top: 12px;
+    }
+    .unreg-body.open {
+      display: block;
+    }
+    .unreg-card {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .unreg-card::before {
+      content: 'UNREGISTERED';
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      background: var(--offline-bg);
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+    }
+    .unreg-card__header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .unreg-card__title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .unreg-card__passkey {
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--text-muted);
+      background: var(--surface-active);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .unreg-card__grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .unreg-card__field {
+      padding: 6px 0;
+    }
+    .unreg-card__label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .unreg-card__value {
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .unreg-empty {
+      text-align: center;
+      padding: 32px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .unreg-notice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: #92400e;
+    }
   </style>
 </head>
 <body>
@@ -259,6 +390,27 @@
             </div>
           </div>
         </section>
+
+        <!-- UNREGISTERED NODES SECTION -->
+        <section class="unreg-section">
+          <div class="unreg-toggle" onclick="toggleUnregSection()">
+            <div class="unreg-toggle__left">
+              <span>📡</span>
+              <span class="unreg-toggle__title">Unregistered Nodes</span>
+              <span class="unreg-toggle__count" id="unregCount">(0 detected)</span>
+            </div>
+            <span class="unreg-toggle__arrow" id="unregArrow">▼</span>
+          </div>
+          <div class="unreg-notice">
+            <span>⚠️</span>
+            <span>Unregistered nodes are <strong>view-only</strong> — they do NOT trigger fire alarms. These show raw sensor data from nodes without registered passkeys or assigned locations.</span>
+          </div>
+          <div class="unreg-body" id="unregBody">
+            <div id="unregCards">
+              <div class="unreg-empty">No unregistered nodes detected yet.</div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
 
@@ -291,6 +443,16 @@
     // =====================================================
     let prevFireCount = 0;
     let currentNodes = {};
+    let unregSectionOpen = false;
+
+    // =====================================================
+    // TOGGLE UNREGISTERED SECTION
+    // =====================================================
+    function toggleUnregSection() {
+      unregSectionOpen = !unregSectionOpen;
+      document.getElementById('unregBody').classList.toggle('open', unregSectionOpen);
+      document.getElementById('unregArrow').classList.toggle('open', unregSectionOpen);
+    }
 
     // =====================================================
     // RENDER
@@ -424,6 +586,68 @@
       }).join('');
     }
 
+    // =====================================================
+    // RENDER UNREGISTERED NODES
+    // =====================================================
+    function renderUnregNodes(unregData) {
+      const entries = Object.entries(unregData);
+      const activeEntries = entries.filter(([k, v]) => v.active && v.last_seen_sec !== undefined && v.last_seen_sec < 120);
+
+      document.getElementById('unregCount').textContent = `(${activeEntries.length} detected)`;
+
+      const container = document.getElementById('unregCards');
+
+      if (activeEntries.length === 0) {
+        container.innerHTML = '<div class="unreg-empty">No unregistered nodes detected yet.</div>';
+        return;
+      }
+
+      container.innerHTML = activeEntries.map(([key, node]) => {
+        return `
+          <div class="unreg-card">
+            <div class="unreg-card__header">
+              <span class="unreg-card__title">Node ${safe(node.node)}</span>
+              <span class="unreg-card__passkey">${safe(node.passkey)}</span>
+            </div>
+            <div class="unreg-card__grid">
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Temperature</div>
+                <div class="unreg-card__value">${safe(node.temp)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Humidity</div>
+                <div class="unreg-card__value">${safe(node.humid)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Smoke</div>
+                <div class="unreg-card__value">${safe(node.smoke)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Fire Sensor</div>
+                <div class="unreg-card__value">${safe(node.fire)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Health</div>
+                <div class="unreg-card__value">${safe(node.health)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">RSSI</div>
+                <div class="unreg-card__value">${safe(node.rssi)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Hops</div>
+                <div class="unreg-card__value">${safe(node.hops)}</div>
+              </div>
+              <div class="unreg-card__field">
+                <div class="unreg-card__label">Last Seen</div>
+                <div class="unreg-card__value">${safe(node.last_seen_sec)}s ago</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     function handleSilenceAlarm() {
       silenceAlarm();
       document.getElementById('silenceBtn').textContent = '🔇 Alarm Silenced';
@@ -431,9 +655,10 @@
     }
 
     // =====================================================
-    // FIREBASE LISTENER
+    // FIREBASE LISTENERS
     // =====================================================
     listenToNodes(renderDashboard);
+    listenToUnregisteredNodes(renderUnregNodes);
   </script>
 </body>
 </html>
