@@ -10,141 +10,130 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    .page-content {
-      padding: 12px 0 16px;
-      flex: 1;
-    }
+    .page-content { padding: 12px 0 16px; flex: 1; }
     .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      color: var(--text-muted);
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 10px;
+      display: inline-flex; align-items: center; gap: 5px;
+      color: var(--text-muted); font-size: 13px; font-weight: 500; margin-bottom: 10px;
       transition: color var(--transition);
     }
-    .back-link:hover {
-      color: var(--brand);
-    }
+    .back-link:hover { color: var(--brand); }
     .page-header {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
+      display: flex; flex-wrap: wrap; justify-content: space-between;
+      align-items: center; gap: 12px; margin-bottom: 14px;
     }
-    .page-header__title {
-      font-size: 24px;
-      font-weight: 800;
-    }
-    .page-header__sub {
-      color: var(--text-secondary);
-      font-size: 13px;
-      margin-top: 2px;
-    }
-    .map-container {
-      height: calc(100vh - 240px);
-      min-height: 400px;
-    }
+    .page-header__title { font-size: 24px; font-weight: 800; }
+    .page-header__sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+    .map-container { height: calc(100vh - 240px); min-height: 400px; }
     .node-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px;
-      margin-bottom: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px;
       transition: all var(--transition);
     }
-    .node-card:hover {
-      box-shadow: var(--shadow-md);
-    }
-    .node-card--fire {
-      border-color: var(--fire-border);
-      border-width: 2px;
-    }
-    .node-card--warn {
-      border-color: var(--warn-border);
-      border-width: 2px;
-    }
+    .node-card:hover { box-shadow: var(--shadow-md); }
+    .node-card--fire { border-color: var(--fire-border); border-width: 2px; }
+    .node-card--warn { border-color: var(--warn-border); border-width: 2px; }
     .node-card__header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 10px;
     }
-    .node-card__title {
-      font-size: 16px;
-      font-weight: 700;
-    }
+    .node-card__title { font-size: 16px; font-weight: 700; }
     .node-card__grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: 6px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px;
     }
-    .node-card__field {
-      padding: 4px 0;
-    }
+    .node-card__field { padding: 4px 0; }
     .node-card__label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-muted);
     }
-    .node-card__value {
-      font-size: 14px;
-      font-weight: 600;
-      margin-top: 1px;
-    }
-    .leaflet-popup .popup-title {
-      font-weight: 700;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
+    .node-card__value { font-size: 14px; font-weight: 600; margin-top: 1px; }
+    .leaflet-popup .popup-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
     .leaflet-popup .popup-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 2px 0;
-      font-size: 12px;
-      border-bottom: 1px solid #f0f0f0;
+      display: flex; justify-content: space-between; padding: 2px 0;
+      font-size: 12px; border-bottom: 1px solid #f0f0f0;
     }
-    .leaflet-popup .popup-row:last-child {
-      border-bottom: none;
-    }
-    .leaflet-popup .popup-label {
-      color: #6b7280;
-      font-weight: 500;
-    }
-    .leaflet-popup .popup-value {
-      font-weight: 600;
-    }
+    .leaflet-popup .popup-row:last-child { border-bottom: none; }
+    .leaflet-popup .popup-label { color: #6b7280; font-weight: 500; }
+    .leaflet-popup .popup-value { font-weight: 600; }
     .legend {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      margin-top: 8px;
-      font-size: 12px;
+      display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 12px;
     }
-    .legend__item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
+    .legend__item { display: flex; align-items: center; gap: 5px; }
     .legend__dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      border: 2px solid rgba(0, 0, 0, 0.15);
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid rgba(0,0,0,0.15);
     }
     .section-title {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      font-size: 15px; font-weight: 700; margin-bottom: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* ===== FIRE NAVIGATION ===== */
+    .fire-nav-panel {
+      background: linear-gradient(135deg, #fef2f2, #fee2e2);
+      border: 2px solid var(--fire-border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      animation: alarm-pulse 1.5s ease-in-out infinite;
+    }
+    .fire-nav-panel.hidden { display: none; }
+    .fire-nav-panel__title {
+      font-size: 16px; font-weight: 800; color: var(--fire);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+    }
+    .fire-nav-panel__list {
+      list-style: none; padding: 0; margin: 0 0 12px 0;
+    }
+    .fire-nav-panel__list li {
+      padding: 6px 0; border-bottom: 1px solid rgba(220,38,38,0.15);
+      font-size: 13px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .fire-nav-panel__list li:last-child { border-bottom: none; }
+    .fire-nav-node {
+      display: flex; align-items: center; gap: 6px; font-weight: 600;
+    }
+    .fire-nav-node__dot {
+      width: 10px; height: 10px; border-radius: 50%; background: #dc2626;
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+    .navigate-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; background: #dc2626; color: white;
+      border: none; border-radius: var(--radius-full);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s ease; text-decoration: none;
+    }
+    .navigate-btn:hover { background: #b91c1c; transform: translateY(-1px); color: white; }
+    .navigate-all-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 10px 16px;
+      background: linear-gradient(135deg, #dc2626, #ea580c);
+      color: white; border: none; border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s ease; text-decoration: none;
+    }
+    .navigate-all-btn:hover {
+      background: linear-gradient(135deg, #b91c1c, #c2410c);
+      box-shadow: 0 4px 12px rgba(220,38,38,0.3);
+      color: white;
+    }
+    .route-info {
+      margin-top: 8px; padding: 8px 12px;
+      background: rgba(255,255,255,0.7); border-radius: var(--radius-sm);
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .route-info strong { color: var(--text-primary); }
+
+    /* Pulsing fire marker on map */
+    .fire-marker-icon {
+      background: rgba(220, 38, 38, 0.3);
+      border: 3px solid #dc2626;
+      border-radius: 50%;
+      animation: fire-marker-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes fire-marker-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
+      50% { box-shadow: 0 0 20px 8px rgba(220,38,38,0.2); }
     }
   </style>
 </head>
@@ -155,15 +144,12 @@
     <div class="mobile-block__icon">🖥️</div>
     <div class="mobile-block__title">Desktop View Required</div>
     <div class="mobile-block__text">
-      The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
+      The CENSYS Fire Monitoring System is optimized for desktop and landscape displays.
     </div>
-    <div class="mobile-block__hint">
-      📱 Rotate to landscape or use a desktop browser
-    </div>
+    <div class="mobile-block__hint">📱 Rotate to landscape or use a desktop browser</div>
   </div>
 
   <div class="page-wrapper">
-    <!-- NAVBAR -->
     <nav class="navbar">
       <div class="navbar__brand">
         <div class="navbar__brand-icon">C</div>
@@ -177,7 +163,7 @@
       </div>
     </nav>
 
-    <!-- FIRE ALARM BANNER (fire station only) -->
+    <!-- FIRE ALARM BANNER -->
     <div class="container mt-8">
       <div class="alarm-banner alarm-hidden" id="alarmBanner">
         <div>
@@ -202,7 +188,7 @@
           <div id="pageBadge"></div>
         </div>
 
-        <!-- SPLIT LAYOUT: Map left, Node cards right -->
+        <!-- SPLIT LAYOUT: Map left, Node cards + Fire Nav right -->
         <div class="layout-split">
           <div class="layout-split__main">
             <div class="map-container" id="map"></div>
@@ -211,9 +197,20 @@
               <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
               <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
               <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#dc2626;animation:fire-marker-pulse 1.2s infinite"></span> Fire (pulsing)</div>
             </div>
           </div>
           <div class="layout-split__side">
+            <!-- FIRE NAVIGATION PANEL (only shows when fire detected) -->
+            <div class="fire-nav-panel hidden" id="fireNavPanel">
+              <div class="fire-nav-panel__title">🔥 Fire Response Navigation</div>
+              <ul class="fire-nav-panel__list" id="fireNavList"></ul>
+              <a id="navigateAllBtn" class="navigate-all-btn" href="#" target="_blank">
+                🚒 Navigate from Fire Station to Fire Location
+              </a>
+              <div class="route-info" id="routeInfo"></div>
+            </div>
+
             <div class="section-title"><span>📡</span> Sensor Nodes</div>
             <div class="scroll-panel" id="nodeCards"></div>
           </div>
@@ -235,28 +232,28 @@
 
   <script>
     // =====================================================
+    // SAN NICOLAS FIRE STATION COORDINATES
+    // =====================================================
+    const FIRE_STATION_LAT = 10.2998;
+    const FIRE_STATION_LNG = 123.8966;
+    const FIRE_STATION_NAME = 'San Nicolas Fire Substation';
+
+    // =====================================================
     // AUTH + PARAMS
     // =====================================================
     const role = sessionStorage.getItem('role');
     const userBarangay = sessionStorage.getItem('barangay');
 
-    if (!role) {
-      window.location.href = 'index.html';
-    }
+    if (!role) window.location.href = 'index.html';
 
     const params = new URLSearchParams(window.location.search);
     const barangayKey = params.get('barangay') || userBarangay || 'kalunasan';
     const brgyInfo = BARANGAY_DATA[barangayKey];
+    if (!brgyInfo) window.location.href = 'index.html';
 
-    if (!brgyInfo) {
-      window.location.href = 'index.html';
-    }
-
-    // Set page content
     document.title = `CENSYS — ${brgyInfo.name}`;
     document.getElementById('pageTitle').textContent = brgyInfo.name;
     document.getElementById('navTitle').textContent = `CENSYS — ${brgyInfo.name}`;
-
     startLiveClock('liveClock');
 
     if (role === 'firestation') {
@@ -271,53 +268,51 @@
     }
 
     function handleBack() {
-      if (role === 'firestation') {
-        window.location.href = 'dashboard-firestation.html';
-      } else {
-        window.location.href = 'dashboard-barangay.html';
-      }
+      window.location.href = role === 'firestation' ? 'dashboard-firestation.html' : 'dashboard-barangay.html';
     }
-
-    function handleLogout() {
-      clearSession();
-      window.location.href = 'index.html';
-    }
-
+    function handleLogout() { clearSession(); window.location.href = 'index.html'; }
     function handleSilenceAlarm() {
       silenceAlarm();
-      const btn = document.getElementById('silenceBtn');
-      btn.textContent = '🔇 Alarm Silenced';
-      btn.disabled = true;
+      document.getElementById('silenceBtn').textContent = '🔇 Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
     }
 
     // =====================================================
     // LEAFLET MAP
     // =====================================================
     const map = L.map('map', {
-      dragging: false,
-      touchZoom: false,
-      doubleClickZoom: false,
-      scrollWheelZoom: false,
+      dragging: true,
+      touchZoom: true,
+      doubleClickZoom: true,
+      scrollWheelZoom: true,
       boxZoom: false,
       keyboard: false,
-      zoomControl: false
+      zoomControl: true
     }).setView(brgyInfo.center, brgyInfo.zoom);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-      maxZoom: 19
+      attribution: '© OpenStreetMap', maxZoom: 19
     }).addTo(map);
 
-    // Barangay area circle highlight
     L.circle(brgyInfo.center, {
-      radius: 400,
-      color: '#2563eb',
-      fillColor: '#2563eb',
-      fillOpacity: 0.06,
-      weight: 2,
-      dashArray: '8 4'
+      radius: 400, color: '#2563eb', fillColor: '#2563eb',
+      fillOpacity: 0.06, weight: 2, dashArray: '8 4'
     }).addTo(map);
+
+    // Fire station marker (always visible)
+    const fireStationIcon = L.divIcon({
+      className: '',
+      html: '<div style="background:#1d4ed8;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:12px">🚒</div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+    L.marker([FIRE_STATION_LAT, FIRE_STATION_LNG], { icon: fireStationIcon })
+      .addTo(map)
+      .bindTooltip(FIRE_STATION_NAME, { permanent: false, direction: 'top', offset: [0, -12] });
 
     let markers = {};
+    let fireMarkers = {};  // Separate pulsing fire markers
+    let routeLayer = null; // Route polyline
 
     function getCategoryColor(cat, online) {
       if (!online) return '#9ca3af';
@@ -326,7 +321,24 @@
       return '#16a34a';
     }
 
+    // ===== PULSING FIRE MARKER =====
+    function createFireMarkerIcon() {
+      return L.divIcon({
+        className: 'fire-marker-icon',
+        html: '<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:16px">🔥</div>',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+    }
+
     function buildPopupContent(node) {
+      const navigateBtn = (node.online && node.category === 'Fire' &&
+        parseFloat(node.lat) !== 0 && parseFloat(node.lng) !== 0)
+        ? `<div style="margin-top:8px;text-align:center">
+            <a href="https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#dc2626;color:white;border-radius:20px;font-size:11px;font-weight:700;text-decoration:none">🚒 Navigate Here</a>
+          </div>`
+        : '';
+
       return `
         <div style="min-width:190px">
           <div class="popup-title">Node ${safe(node.node)}</div>
@@ -338,48 +350,133 @@
           <div class="popup-row"><span class="popup-label">Fire</span><span class="popup-value">${safe(node.fire)}</span></div>
           <div class="popup-row"><span class="popup-label">Health</span><span class="popup-value">${safe(node.health)}</span></div>
           <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}</span></div>
-          <div class="popup-row"><span class="popup-label">Hops</span><span class="popup-value">${safe(node.hops)}</span></div>
-          <div class="popup-row"><span class="popup-label">Path</span><span class="popup-value">${safe(node.path)}</span></div>
           <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${formatTimeAgo(node.last_seen_sec)}</span></div>
+          ${navigateBtn}
         </div>
       `;
     }
 
     function updateMarkers(nodes) {
+      // Remove old fire markers
+      Object.values(fireMarkers).forEach(m => map.removeLayer(m));
+      fireMarkers = {};
+
       Object.entries(nodes).forEach(([key, node]) => {
         const lat = parseFloat(node.lat);
         const lng = parseFloat(node.lng);
-
         if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
 
         const color = getCategoryColor(node.category, node.online);
 
+        // Regular circle marker
         if (markers[key]) {
           markers[key].setLatLng([lat, lng]);
           markers[key].setStyle({ color: color, fillColor: color });
           markers[key].setPopupContent(buildPopupContent(node));
         } else {
           const marker = L.circleMarker([lat, lng], {
-            radius: 14,
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.7,
-            weight: 3
+            radius: 14, color: color, fillColor: color, fillOpacity: 0.7, weight: 3
           }).addTo(map);
-
-          marker.bindPopup(buildPopupContent(node), {
-            maxWidth: 280
-          });
-
-          marker.bindTooltip(`Node ${node.node}`, {
-            permanent: false,
-            direction: 'top',
-            offset: [0, -10]
-          });
-
+          marker.bindPopup(buildPopupContent(node), { maxWidth: 300 });
+          marker.bindTooltip(`Node ${node.node}`, { permanent: false, direction: 'top', offset: [0, -10] });
           markers[key] = marker;
         }
+
+        // Add pulsing fire marker for fire nodes
+        if (node.online && node.category === 'Fire') {
+          const fireM = L.marker([lat, lng], { icon: createFireMarkerIcon() }).addTo(map);
+          fireM.bindPopup(buildPopupContent(node), { maxWidth: 300 });
+          fireMarkers[key] = fireM;
+        }
       });
+    }
+
+    // =====================================================
+    // DRAW ROUTE FROM FIRE STATION TO FIRE LOCATION
+    // Uses OSRM public API for driving directions
+    // =====================================================
+    async function drawRoute(destLat, destLng) {
+      // Remove previous route
+      if (routeLayer) {
+        map.removeLayer(routeLayer);
+        routeLayer = null;
+      }
+
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${FIRE_STATION_LNG},${FIRE_STATION_LAT};${destLng},${destLat}?overview=full&geometries=geojson`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+          routeLayer = L.polyline(coords, {
+            color: '#dc2626', weight: 5, opacity: 0.8,
+            dashArray: '10 6', className: 'route-line'
+          }).addTo(map);
+
+          // Fit map to show entire route
+          map.fitBounds(routeLayer.getBounds().pad(0.15));
+
+          // Update route info
+          const distKm = (route.distance / 1000).toFixed(1);
+          const durationMin = Math.ceil(route.duration / 60);
+          document.getElementById('routeInfo').innerHTML =
+            `<strong>Route:</strong> ${distKm} km · ~${durationMin} min driving from ${FIRE_STATION_NAME}`;
+
+          return { distance: distKm, duration: durationMin };
+        }
+      } catch (e) {
+        console.warn('Route fetch failed:', e);
+        document.getElementById('routeInfo').innerHTML =
+          '<strong>Route:</strong> Could not calculate — use the Navigate button for Google Maps';
+      }
+      return null;
+    }
+
+    // =====================================================
+    // FIRE NAVIGATION PANEL
+    // =====================================================
+    function updateFireNavigation(nodes) {
+      const fireNodes = Object.values(nodes).filter(n =>
+        n.online && n.category === 'Fire' &&
+        parseFloat(n.lat) !== 0 && parseFloat(n.lng) !== 0
+      );
+
+      const panel = document.getElementById('fireNavPanel');
+      const navList = document.getElementById('fireNavList');
+      const navBtn = document.getElementById('navigateAllBtn');
+
+      if (fireNodes.length === 0) {
+        panel.classList.add('hidden');
+        if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+        return;
+      }
+
+      panel.classList.remove('hidden');
+
+      // Build fire node list with individual navigate buttons
+      navList.innerHTML = fireNodes.map(node => {
+        const navUrl = `https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}`;
+        return `
+          <li>
+            <div class="fire-nav-node">
+              <span class="fire-nav-node__dot"></span>
+              Node ${safe(node.node)} — ${safe(node.temp)}°C, Smoke: ${safe(node.smoke)}
+            </div>
+            <a href="${navUrl}" target="_blank" class="navigate-btn">🚒 Navigate</a>
+          </li>
+        `;
+      }).join('');
+
+      // Main navigate button — goes to the first (nearest/worst) fire node
+      const primaryFire = fireNodes[0];
+      const mainNavUrl = `https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${primaryFire.lat},${primaryFire.lng}`;
+      navBtn.href = mainNavUrl;
+
+      // Draw route on map to closest fire
+      drawRoute(parseFloat(primaryFire.lat), parseFloat(primaryFire.lng));
     }
 
     // =====================================================
@@ -397,9 +494,13 @@
       container.innerHTML = entries.map(([key, node]) => {
         const borderClass = node.category === 'Fire' ? 'node-card--fire' :
           node.category === 'Warning' ? 'node-card--warn' : '';
-
         const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
         const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
+
+        // Navigate button for fire nodes
+        const navBtn = (node.online && node.category === 'Fire' && parseFloat(node.lat) !== 0)
+          ? `<a href="https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}" target="_blank" class="navigate-btn" style="margin-top:8px">🚒 Navigate to Fire</a>`
+          : '';
 
         return `
           <div class="node-card ${borderClass}">
@@ -440,10 +541,6 @@
                 <div class="node-card__value">${safe(node.health)}</div>
               </div>
               <div class="node-card__field">
-                <div class="node-card__label">Path</div>
-                <div class="node-card__value">${safe(node.path)}</div>
-              </div>
-              <div class="node-card__field">
                 <div class="node-card__label">Coordinates</div>
                 <div class="node-card__value">${safe(node.lat)}, ${safe(node.lng)}</div>
               </div>
@@ -452,18 +549,18 @@
                 <div class="node-card__value">${formatTimeAgo(node.last_seen_sec)}</div>
               </div>
             </div>
+            ${navBtn}
           </div>
         `;
       }).join('');
     }
 
     // =====================================================
-    // ALARM HANDLING
+    // ALARM
     // =====================================================
     let prevFireCount = 0;
 
     function handleAlarm(filteredNodes) {
-      // Use proximity clustering for alarm level
       const fireResult = clusterFires(filteredNodes, 100);
       const fireIncidents = fireResult.totalIncidents;
       const fireNodeCount = fireResult.totalFireNodes;
@@ -474,13 +571,8 @@
         document.getElementById('alarmBannerSub').textContent =
           `${fireNodeCount} node(s) reporting fire in ${brgyInfo.name} (${fireIncidents} incident(s))`;
 
-        if (fireIncidents > prevFireCount) {
-          resetAlarmSilence();
-        }
-
-        if (!alarmSilenced && role === 'firestation') {
-          startAlarmSound();
-        }
+        if (fireIncidents > prevFireCount) resetAlarmSilence();
+        if (!alarmSilenced && role === 'firestation') startAlarmSound();
       } else {
         banner.classList.add('alarm-hidden');
         stopAlarmSound();
@@ -488,30 +580,26 @@
       }
       prevFireCount = fireIncidents;
 
-      // Page badge
       const alarm = getBFPAlarmLevel(fireIncidents);
       const pageBadge = document.getElementById('pageBadge');
-      if (fireIncidents > 0) {
-        pageBadge.innerHTML = `<div class="alarm-level ${alarm.class}"><span>🔥</span> ${alarm.label}</div>`;
-      } else {
-        pageBadge.innerHTML = `<div class="alarm-level alarm-level--none"><span>✅</span> All Clear</div>`;
-      }
+      pageBadge.innerHTML = fireIncidents > 0
+        ? `<div class="alarm-level ${alarm.class}"><span>🔥</span> ${alarm.label}</div>`
+        : `<div class="alarm-level alarm-level--none"><span>✅</span> All Clear</div>`;
     }
 
     // =====================================================
-    // FIREBASE LISTENER — filter by barangay
+    // FIREBASE — filter by barangay
     // =====================================================
     listenToNodes((allNodes) => {
       const filtered = {};
       Object.entries(allNodes).forEach(([key, node]) => {
-        if (node.barangay === barangayKey) {
-          filtered[key] = node;
-        }
+        if (node.barangay === barangayKey) filtered[key] = node;
       });
 
       updateMarkers(filtered);
       renderNodeCards(filtered);
       handleAlarm(filtered);
+      updateFireNavigation(filtered);
     });
   </script>
 </body>

@@ -51,7 +51,7 @@ bool firebaseUnregDirty = false;
 // =====================================================
 // BEACON TIMING
 // =====================================================
-const unsigned long BEACON_INTERVAL_MS = 10000;  // Broadcast beacon every 10 seconds
+const unsigned long BEACON_INTERVAL_MS = 15000;  // Broadcast beacon every 15 seconds (avoid TDMA slot interference)
 unsigned long lastBeaconSent = 0;
 
 WebServer server(80);
@@ -105,7 +105,7 @@ struct NodeData {
 
 NodeData nodes[5];   // use index 1..4
 
-const unsigned long NODE_TIMEOUT_MS = 25000;  // 25 seconds (matches node interval 8s * 3)
+const unsigned long NODE_TIMEOUT_MS = 30000;  // 30 seconds (matches TDMA cycle 12s * 2.5)
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -271,13 +271,13 @@ void updateGatewayLED() {
 void sendAck(String key, int originNode, String seqStr) {
   String ack = key + "|ACK|" + String(originNode) + "|" + seqStr;
 
-  delay(15);                 // Brief delay before ACK
-  LoRa.idle();               // Switch to idle
+  delay(50);                 // 50ms delay to let channel settle after node TX
+  LoRa.idle();
   LoRa.beginPacket();
   LoRa.print(ack);
-  LoRa.endPacket(true);      // Non-blocking send
-  delay(50);                 // Wait for TX to start
-  LoRa.receive();            // Back to receive ASAP
+  LoRa.endPacket();          // BLOCKING — ensure ACK is fully sent
+  delay(20);
+  LoRa.receive();
 
   Serial.println("ACK -> Node " + String(originNode));
 }

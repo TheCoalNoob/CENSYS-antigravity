@@ -620,6 +620,15 @@
           ? Math.min(...brgy.nodes.filter(n => n.online).map(n => n.last_seen_sec || 999))
           : null;
 
+        // 🚒 Respond button for barangays with active fire
+        const respondBtn = hasFire
+          ? `<div style="margin-top:10px">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,#dc2626,#ea580c);color:white;border-radius:20px;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(220,38,38,0.3)">
+                🚒 Respond to Fire — View Map & Route
+              </span>
+            </div>`
+          : '';
+
         return `
           <a href="barangay-detail.html?barangay=${key}" class="brgy-tile${fireClass}" id="tile-${key}">
             <div class="brgy-tile__header">
@@ -648,6 +657,7 @@
               Signal: ${signalBarsHTML(avgRssi)}
               ${lastSeen !== null && lastSeen < 999 ? ` · Last: ${formatTimeAgo(lastSeen)}` : ''}
             </div>
+            ${respondBtn}
           </a>
         `;
       }).join('');
