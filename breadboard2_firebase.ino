@@ -40,10 +40,11 @@ const char* STA_PASS = "444everydayOK*";
 // =====================================================
 // Push interval — don't flood Firebase
 // =====================================================
-const unsigned long FIREBASE_PUSH_INTERVAL_MS = 3000;
-const unsigned long FIREBASE_STATUS_PUSH_MS = 15000;  // Push online/offline status every 15s
+const unsigned long FIREBASE_PUSH_INTERVAL_MS = 2000;  // Push ONE node every 2 seconds (round-robin)
+const unsigned long FIREBASE_STATUS_PUSH_MS = 15000;    // Periodic status refresh
 unsigned long lastFirebasePush = 0;
 unsigned long lastStatusPush = 0;
+int firebasePushIndex = 0;         // Round-robin: 1-4 = nodes, 5 = gateway, 6+ = unreg
 bool firebaseDataDirty = false;
 bool firebaseUnregDirty = false;
 
@@ -98,7 +99,7 @@ struct NodeData {
 
 NodeData nodes[5];   // use index 1..4
 
-const unsigned long NODE_TIMEOUT_MS = 30000;
+const unsigned long NODE_TIMEOUT_MS = 20000;  // 20 seconds before marking offline
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -262,20 +263,17 @@ void updateGatewayLED() {
 }
 
 void sendAck(String key, int originNode, String seqStr) {
-  String ack =
-    key + "|" +
-    "ACK" + "|" +
-    String(originNode) + "|" +
-    seqStr;
+  String ack = key + "|ACK|" + String(originNode) + "|" + seqStr;
 
-  delay(30);
+  delay(15);                 // Brief delay before ACK
+  LoRa.idle();               // Switch to idle
   LoRa.beginPacket();
   LoRa.print(ack);
-  LoRa.endPacket();
-  LoRa.receive();  // Return to receive mode after sending
+  LoRa.endPacket(true);      // Non-blocking send
+  delay(50);                 // Wait for TX to start
+  LoRa.receive();            // Back to receive ASAP
 
-  Serial.print("Sent ACK: ");
-  Serial.println(ack);
+  Serial.println("ACK -> Node " + String(originNode));
 }
 
 String nodeStatusText(int nodeId) {
@@ -596,12 +594,28 @@ void pushUnregToFirebase() {
   }
 }
 
-void pushAllToFirebase() {
-  for (int i = 1; i <= 4; i++) {
-    pushNodeToFirebase(i);
+// Push ONE item to Firebase (called repeatedly, round-robin)
+// This prevents blocking LoRa for 5-10 seconds!
+void pushNextToFirebase() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  firebasePushIndex++;
+
+  if (firebasePushIndex >= 1 && firebasePushIndex <= 4) {
+    // Push one node
+    pushNodeToFirebase(firebasePushIndex);
+  } else if (firebasePushIndex == 5) {
+    // Push gateway status
+    pushGatewayToFirebase();
+  } else if (firebasePushIndex == 6 && firebaseUnregDirty) {
+    // Push unregistered nodes
+    pushUnregToFirebase();
+    firebaseUnregDirty = false;
+  } else {
+    // Reset cycle
+    firebasePushIndex = 0;
+    firebaseDataDirty = false;
   }
-  pushGatewayToFirebase();
-  Serial.println("Firebase: All registered data pushed");
 }
 
 // =====================================================
@@ -821,16 +835,16 @@ void setup() {
     }
   }
 
-  // ===== MAXIMIZE LORA RANGE =====
-  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
-  LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
+  // ===== LORA SETTINGS — SF10 matches nodes =====
+  LoRa.setSpreadingFactor(10);
+  LoRa.setSignalBandwidth(125E3);
   LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
-  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
-  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
-  LoRa.enableCrc();                                // CRC catches corrupted packets automatically
-  LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
+  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
+  LoRa.setPreambleLength(8);
+  LoRa.enableCrc();
+  LoRa.setGain(0);
 
-  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
+  Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm, CRC ON");
 
   // Put LoRa in continuous receive mode
   LoRa.receive();
@@ -882,22 +896,18 @@ void loop() {
   server.handleClient();
   updateGatewayLED();
 
-  // Periodic Firebase push for registered nodes (when new data arrives)
+  // Firebase: push ONE item per cycle (non-blocking round-robin)
+  // This is critical: pushing all 5+ items at once blocks LoRa for 5-10 seconds!
   if (firebaseDataDirty && (millis() - lastFirebasePush >= FIREBASE_PUSH_INTERVAL_MS)) {
-    pushAllToFirebase();
-    if (firebaseUnregDirty) {
-      pushUnregToFirebase();
-      firebaseUnregDirty = false;
-    }
+    pushNextToFirebase();
     lastFirebasePush = millis();
     lastStatusPush = millis();
-    firebaseDataDirty = false;
   }
 
   // Periodic status push (even without new data) so offline nodes get updated
   if (millis() - lastStatusPush >= FIREBASE_STATUS_PUSH_MS) {
-    pushAllToFirebase();
-    lastStatusPush = millis();
+    firebaseDataDirty = true;
+    firebasePushIndex = 0;  // Restart round-robin
   }
 
   int packetSize = LoRa.parsePacket();

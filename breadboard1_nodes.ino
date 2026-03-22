@@ -43,15 +43,15 @@ double cachedLat = 0.0;
 double cachedLng = 0.0;
 bool hasCachedGPS = false;
 unsigned long lastGPSFixMillis = 0;
-const unsigned long GPS_CACHE_MAX_AGE_MS = 300000;  // 5 minutes max cache age
+const unsigned long GPS_CACHE_MAX_AGE_MS = 300000;
 
 // =====================================================
 // TIMING
 // =====================================================
-const unsigned long SEND_INTERVAL_MS = 15000;    // 15 seconds — enough room for 4 nodes at SF12
-const unsigned long ACK_TIMEOUT_MS   = 1500;     // Longer ACK wait for SF12 air time
-const unsigned long NETWORK_OK_MS    = 45000;    // Allow more time before marking disconnected
-const int MAX_HOPS = 3;                           // Reduced: nodes are close, no need for 6 hops
+const unsigned long SEND_INTERVAL_MS = 5000;   // 5 seconds between sends
+const unsigned long ACK_TIMEOUT_MS   = 800;    // ACK wait time
+const unsigned long NETWORK_OK_MS    = 20000;
+const int MAX_HOPS = 3;
 
 // =====================================================
 // STATE
@@ -61,6 +61,7 @@ unsigned long lastAckTime = 0;
 unsigned long lastLedBlink = 0;
 bool ledState = false;
 unsigned long seqCounter = 0;
+int noAckCount = 0;  // Track consecutive failed ACKs for retry logic
 
 // =====================================================
 // DUPLICATE TRACKER
@@ -71,44 +72,23 @@ int seenIndex = 0;
 
 // =====================================================
 // GPS INITIALIZATION COMMANDS
-// Sends PMTK commands to optimize GPS module for
-// better indoor/weak-signal performance.
 // =====================================================
 void initGPSModule() {
-  // Set update rate to 1Hz (1000ms)
   gpsSerial.println("$PMTK220,1000*1F");
   delay(100);
-
-  // Enable all NMEA sentences that help with position
-  // GGA, RMC, GSA, GSV for full satellite info
   gpsSerial.println("$PMTK314,0,1,0,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0*28");
   delay(100);
-
-  // Enable SBAS (Satellite-Based Augmentation System)
-  // Improves accuracy using geostationary satellite corrections
   gpsSerial.println("$PMTK313,1*2E");
   delay(100);
-
-  // Enable SBAS integrity mode
   gpsSerial.println("$PMTK301,2*2E");
   delay(100);
-
-  // Enable AIC (Active Interference Cancellation)
-  // Reduces interference from nearby electronics
   gpsSerial.println("$PMTK286,1*23");
   delay(100);
-
-  // Enable EASY (Embedded Assist System)
-  // Uses predicted orbits for faster time-to-first-fix
   gpsSerial.println("$PMTK869,1,1*35");
   delay(100);
-
-  // Set navigation mode to pedestrian/stationary
-  // Better for fixed sensor nodes — more aggressive position hold
   gpsSerial.println("$PMTK886,1*25");
   delay(100);
-
-  Serial.println("GPS: PMTK init commands sent (SBAS, AIC, EASY, pedestrian mode)");
+  Serial.println("GPS: PMTK init commands sent");
 }
 
 // =====================================================
@@ -118,7 +98,6 @@ String getField(String data, int index) {
   int found = 0;
   int start = 0;
   int end = -1;
-
   for (int i = 0; i < (int)data.length(); i++) {
     if (data.charAt(i) == '|') {
       found++;
@@ -143,14 +122,6 @@ void addSeen(String sig) {
   seenIndex = (seenIndex + 1) % SEEN_MAX;
 }
 
-String smokeLevel(int mq2) {
-  if (mq2 < 0) return "Needs replacement";
-  if (mq2 >= 900) return "Heavy Smoke / Fire";
-  if (mq2 >= 600) return "Smoke";
-  if (mq2 >= 150) return "Clean Air";
-  return "Very Clean / Sensor Warming";
-}
-
 String fireStatus(int flameDigital) {
   if (flameDigital != LOW && flameDigital != HIGH) return "Needs replacement";
   return (flameDigital == LOW) ? "Flame" : "None";
@@ -164,24 +135,20 @@ bool isDHTBad(float temp, float hum) {
 }
 
 bool isMQ2Bad(int mq2) {
-  if (mq2 < 0 || mq2 > 4095) return true;
-  return false;
+  return (mq2 < 0 || mq2 > 4095);
 }
 
 bool isFlameBad(int flameVal) {
-  if (flameVal != LOW && flameVal != HIGH) return true;
-  return false;
+  return (flameVal != LOW && flameVal != HIGH);
 }
 
 String sensorHealthText(float temp, float hum, int mq2, int flameVal, bool gpsLive, bool gpsCached) {
   String issues = "";
-
   if (isDHTBad(temp, hum)) issues += "DHT22 Needs replacement;";
   if (isMQ2Bad(mq2)) issues += "MQ2 Needs replacement;";
   if (isFlameBad(flameVal)) issues += "FlameSensor Needs replacement;";
   if (!gpsLive && !gpsCached) issues += "GPS No Fix;";
   else if (!gpsLive && gpsCached) issues += "GPS Cached;";
-
   if (issues.length() == 0) return "OK";
   return issues;
 }
@@ -195,52 +162,51 @@ void updateLED(float temp, float hum, int mq2, int flameVal) {
   bool networkOk = (millis() - lastAckTime) < NETWORK_OK_MS;
 
   if (maintenance) {
-    // slow blink = needs maintenance
     if (millis() - lastLedBlink >= 800) {
       lastLedBlink = millis();
       ledState = !ledState;
       digitalWrite(LED_PIN, ledState);
     }
   } else if (!networkOk) {
-    // fast blink = finding/connecting to LoRa
     if (millis() - lastLedBlink >= 180) {
       lastLedBlink = millis();
       ledState = !ledState;
       digitalWrite(LED_PIN, ledState);
     }
   } else {
-    // stable = connected to LoRa and working
     digitalWrite(LED_PIN, HIGH);
     ledState = true;
   }
 }
 
-void sendPacket(String packet) {
+// =====================================================
+// LORA SEND — non-blocking with receive restore
+// =====================================================
+void sendLoRa(String packet) {
+  LoRa.idle();               // Switch to idle before transmitting
   LoRa.beginPacket();
   LoRa.print(packet);
-  LoRa.endPacket();
-  LoRa.receive();  // Return to receive mode immediately after sending
+  LoRa.endPacket(true);      // true = async/non-blocking send
+  delay(100);                // Brief wait for transmission to start
+  LoRa.receive();            // Back to receive mode
 }
 
 bool waitForAck(unsigned long mySeq) {
   unsigned long t0 = millis();
-
   while (millis() - t0 < ACK_TIMEOUT_MS) {
-    // Feed GPS while waiting (don't waste time)
     while (gpsSerial.available()) gps.encode(gpsSerial.read());
-
     int packetSize = LoRa.parsePacket();
-    if (!packetSize) continue;
-
+    if (!packetSize) {
+      delay(5);
+      continue;
+    }
     String rx = "";
     while (LoRa.available()) rx += (char)LoRa.read();
     rx.trim();
-
-    String key   = getField(rx, 0);
-    String type  = getField(rx, 1);
-    String dest  = getField(rx, 2);
-    String seq   = getField(rx, 3);
-
+    String key  = getField(rx, 0);
+    String type = getField(rx, 1);
+    String dest = getField(rx, 2);
+    String seq  = getField(rx, 3);
     if (type == "ACK" && key == NODE_PASSKEY) {
       if (dest.toInt() == NODE_ID && seq.toInt() == (int)mySeq) {
         lastAckTime = millis();
@@ -251,8 +217,13 @@ bool waitForAck(unsigned long mySeq) {
   return false;
 }
 
+// =====================================================
+// PROCESS INCOMING (relay for mesh)
+// Only relay packets that have already been relayed
+// (hops >= 1), meaning they came from a node that
+// can't reach the gateway directly.
+// =====================================================
 void processIncoming() {
-  // Feed GPS data aggressively
   while (gpsSerial.available()) gps.encode(gpsSerial.read());
 
   int packetSize = LoRa.parsePacket();
@@ -262,15 +233,14 @@ void processIncoming() {
   while (LoRa.available()) rx += (char)LoRa.read();
   rx.trim();
 
-  String key     = getField(rx, 0);
-  String type    = getField(rx, 1);
+  String key  = getField(rx, 0);
+  String type = getField(rx, 1);
 
-  // Ignore if not for this network/passkey family
   if (!(key == "CENSYS_N1_2026" || key == "CENSYS_N2_2026" || key == "CENSYS_N3_2026" || key == "CENSYS_N4_2026")) {
     return;
   }
 
-  // ACK packet
+  // Handle ACK
   if (type == "ACK") {
     String dest = getField(rx, 2);
     if (dest.toInt() == NODE_ID) {
@@ -279,7 +249,8 @@ void processIncoming() {
     return;
   }
 
-  // DATA packet relay
+  if (type != "DATA") return;
+
   String originStr = getField(rx, 2);
   String senderStr = getField(rx, 3);
   String seqStr    = getField(rx, 4);
@@ -289,7 +260,6 @@ void processIncoming() {
   int sender = senderStr.toInt();
   int hops   = hopsStr.toInt();
 
-  // avoid self-loop
   if (origin == NODE_ID) return;
   if (sender == NODE_ID) return;
 
@@ -297,9 +267,12 @@ void processIncoming() {
   if (isSeen(sig)) return;
   addSeen(sig);
 
+  // ONLY relay packets that are already being relayed (hops >= 1)
+  // If hops == 0, the node sent directly and the gateway probably got it
+  // This prevents relay storms when all nodes can reach the gateway
+  if (hops < 1) return;
   if (hops >= MAX_HOPS) return;
 
-  // relay packet
   String tempStr   = getField(rx, 6);
   String humStr    = getField(rx, 7);
   String mq2Str    = getField(rx, 8);
@@ -310,51 +283,27 @@ void processIncoming() {
   String pathStr   = getField(rx, 13);
 
   String newPath = pathStr + ">" + String(NODE_ID);
-
   String relayPacket =
-    key + "|" +
-    "DATA" + "|" +
-    originStr + "|" +
-    String(NODE_ID) + "|" +
-    seqStr + "|" +
-    String(hops + 1) + "|" +
-    tempStr + "|" +
-    humStr + "|" +
-    mq2Str + "|" +
-    fireStr + "|" +
-    latStr + "|" +
-    lngStr + "|" +
-    healthStr + "|" +
-    newPath;
+    key + "|DATA|" + originStr + "|" + String(NODE_ID) + "|" +
+    seqStr + "|" + String(hops + 1) + "|" +
+    tempStr + "|" + humStr + "|" + mq2Str + "|" + fireStr + "|" +
+    latStr + "|" + lngStr + "|" + healthStr + "|" + newPath;
 
-  // Longer random delay based on NODE_ID to avoid relay collisions
-  delay(random(200 + (NODE_ID * 100), 500 + (NODE_ID * 150)));
-  sendPacket(relayPacket);
+  // Long delay based on NODE_ID to prevent relay collisions
+  delay(random(300 + (NODE_ID * 200), 600 + (NODE_ID * 300)));
+  sendLoRa(relayPacket);
 
-  Serial.println("--------------------------------");
-  Serial.println("Relayed packet");
-  Serial.print("Origin Node: "); Serial.println(originStr);
-  Serial.print("From Node: ");   Serial.println(senderStr);
-  Serial.print("Through Node: ");Serial.println(NODE_ID);
-  Serial.print("Seq: ");         Serial.println(seqStr);
+  Serial.println("Relayed from Node " + originStr + " (hops:" + String(hops+1) + ")");
 }
 
 // =====================================================
-// UPDATE GPS CACHE
-// Stores last known good coordinates for indoor use
+// GPS CACHE
 // =====================================================
 void updateGPSCache() {
-  // Feed all available GPS data
-  while (gpsSerial.available()) {
-    gps.encode(gpsSerial.read());
-  }
-
-  // If we have a valid live fix, cache it
+  while (gpsSerial.available()) gps.encode(gpsSerial.read());
   if (gps.location.isValid() && gps.location.isUpdated()) {
     double newLat = gps.location.lat();
     double newLng = gps.location.lng();
-
-    // Sanity check — valid coordinates for Philippines area
     if (newLat > 4.0 && newLat < 22.0 && newLng > 116.0 && newLng < 128.0) {
       cachedLat = newLat;
       cachedLng = newLng;
@@ -364,10 +313,6 @@ void updateGPSCache() {
   }
 }
 
-// =====================================================
-// GET BEST AVAILABLE GPS COORDINATES
-// Returns live fix if available, otherwise cached
-// =====================================================
 bool getGPSCoordinates(double &lat, double &lng, String &gpsStatus) {
   if (gps.location.isValid()) {
     lat = gps.location.lat();
@@ -375,15 +320,12 @@ bool getGPSCoordinates(double &lat, double &lng, String &gpsStatus) {
     gpsStatus = "Live";
     return true;
   }
-
-  // Use cached coordinates if available and not too old
   if (hasCachedGPS && (millis() - lastGPSFixMillis) < GPS_CACHE_MAX_AGE_MS) {
     lat = cachedLat;
     lng = cachedLng;
     gpsStatus = "Cached";
     return true;
   }
-
   lat = 0.0;
   lng = 0.0;
   gpsStatus = "No Fix";
@@ -402,15 +344,11 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
 
   dht.begin();
-
-  // GPS init at 9600 baud (default for most modules)
   gpsSerial.begin(9600, SERIAL_8N1, 16, 17);
   delay(500);
-
-  // Send GPS optimization commands
   initGPSModule();
 
-  // LoRa init with MAXIMUM RANGE settings
+  // LoRa init
   LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
   if (!LoRa.begin(433E6)) {
     Serial.println("LoRa init failed!");
@@ -420,45 +358,43 @@ void setup() {
     }
   }
 
-  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
-  LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
-  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
-  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
-  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
-  LoRa.enableCrc();                                // CRC catches corrupted packets automatically
-  LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
+  // ===== LORA SETTINGS — SF10 for best range+reliability with 4 nodes =====
+  // SF10 at 433MHz + 20dBm = excellent wall penetration
+  // Air time ~0.5s per packet — allows 4 nodes to share the channel
+  LoRa.setSpreadingFactor(10);
+  LoRa.setSignalBandwidth(125E3);
+  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction for reliability
+  LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
+  LoRa.setPreambleLength(8);
+  LoRa.enableCrc();
+  LoRa.setGain(0);                                 // AGC auto gain
 
-  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
-
-  // Put LoRa in continuous receive mode
+  Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm, CRC ON");
   LoRa.receive();
 
   randomSeed(analogRead(35));
 
-  Serial.println("Breadboard 1 Node Ready (LoRa + GPS Optimized)");
-  Serial.print("Node ID: "); Serial.println(NODE_ID);
-  Serial.print("Passkey: "); Serial.println(NODE_PASSKEY);
+  // STAGGER: offset the first send based on NODE_ID
+  // Node 1 starts at 1s, Node 2 at 2.2s, Node 3 at 3.4s, Node 4 at 4.6s
+  // This naturally separates transmissions without complex modulo math
+  lastSendTime = millis() - SEND_INTERVAL_MS + (NODE_ID * 1200UL);
+
+  Serial.println("Node " + String(NODE_ID) + " Ready | Passkey: " + NODE_PASSKEY);
 }
 
 // =====================================================
 // LOOP
 // =====================================================
 void loop() {
-  // Feed GPS data aggressively — process all available bytes every loop
+  // Feed GPS continuously
   while (gpsSerial.available()) gps.encode(gpsSerial.read());
-
-  // Update GPS cache with any new fix
   updateGPSCache();
 
-  // Process incoming LoRa packets (relay for mesh)
+  // Process incoming LoRa packets
   processIncoming();
 
-  // Stagger transmissions: each node sends at a different time slot
-  // Node 1 sends at 0ms, Node 2 at 3500ms, Node 3 at 7000ms, Node 4 at 10500ms
-  // This gives each node ~3.5 seconds of clear air time (SF12 packet ~2.5s + ACK ~0.8s)
-  unsigned long nodeOffset = (unsigned long)(NODE_ID - 1) * 3500;
-  unsigned long cyclePos = millis() % SEND_INTERVAL_MS;
-  if (millis() - lastSendTime >= SEND_INTERVAL_MS && cyclePos >= nodeOffset && cyclePos < nodeOffset + 800) {
+  // Time to send?
+  if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
     lastSendTime = millis();
     seqCounter++;
 
@@ -467,7 +403,6 @@ void loop() {
     int mq2Raw = analogRead(MQ2_PIN);
     int flameVal = digitalRead(FLAME_PIN);
 
-    // Get GPS coordinates (live or cached)
     double lat = 0.0, lng = 0.0;
     String gpsStatus = "No Fix";
     bool hasGPS = getGPSCoordinates(lat, lng, gpsStatus);
@@ -478,55 +413,54 @@ void loop() {
     String humStr  = isDHTBad(temp, hum) ? "Needs replacement" : String(hum, 1);
     String mq2Str  = isMQ2Bad(mq2Raw) ? "Needs replacement" : String(mq2Raw);
     String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal);
-
     String healthStr = sensorHealthText(temp, hum, mq2Raw, flameVal, gpsLive, gpsCached);
 
     String payload =
-      NODE_PASSKEY + "|" +
-      "DATA" + "|" +
-      String(NODE_ID) + "|" +
-      String(NODE_ID) + "|" +
-      String(seqCounter) + "|" +
-      "0" + "|" +
-      tempStr + "|" +
-      humStr + "|" +
-      mq2Str + "|" +
-      fireStr + "|" +
-      String(lat, 6) + "|" +
-      String(lng, 6) + "|" +
-      healthStr + "|" +
-      String(NODE_ID);
+      NODE_PASSKEY + "|DATA|" +
+      String(NODE_ID) + "|" + String(NODE_ID) + "|" +
+      String(seqCounter) + "|0|" +
+      tempStr + "|" + humStr + "|" + mq2Str + "|" + fireStr + "|" +
+      String(lat, 6) + "|" + String(lng, 6) + "|" +
+      healthStr + "|" + String(NODE_ID);
 
     String sig = NODE_PASSKEY + "|" + String(NODE_ID) + "|" + String(seqCounter);
     addSeen(sig);
 
-    Serial.println("--------------------------------");
-    Serial.print("Node: "); Serial.println(NODE_ID);
-    Serial.print("Temp: "); Serial.println(tempStr);
-    Serial.print("Humid: "); Serial.println(humStr);
-    Serial.print("Smoke: "); Serial.println(mq2Str);
-    Serial.print("Fire: "); Serial.println(fireStr);
-    Serial.print("GPS: "); Serial.print(gpsStatus);
-    Serial.print(" | Lat: "); Serial.print(lat, 6);
-    Serial.print(" | Lng: "); Serial.println(lng, 6);
-    if (hasCachedGPS) {
-      Serial.print("Cached GPS Age: "); Serial.print((millis() - lastGPSFixMillis) / 1000); Serial.println("s");
-    }
-    Serial.print("Satellites: "); Serial.println(gps.satellites.value());
-    Serial.print("Health: "); Serial.println(healthStr);
-    Serial.print("Seq: "); Serial.println(seqCounter);
+    Serial.println("---- TX Node " + String(NODE_ID) + " Seq:" + String(seqCounter) + " ----");
+    Serial.println("T:" + tempStr + " H:" + humStr + " S:" + mq2Str + " F:" + fireStr);
+    Serial.println("GPS:" + gpsStatus + " Sat:" + String(gps.satellites.value()));
 
-    sendPacket(payload);
+    sendLoRa(payload);
     bool ackOk = waitForAck(seqCounter);
 
-    Serial.print("ACK: ");
-    Serial.println(ackOk ? "OK" : "NO ACK");
+    if (ackOk) {
+      noAckCount = 0;
+      Serial.println("ACK: OK");
+    } else {
+      noAckCount++;
+      Serial.println("ACK: FAIL (" + String(noAckCount) + " consecutive)");
+
+      // Retry once after a short delay if we keep failing
+      if (noAckCount >= 2 && noAckCount <= 4) {
+        delay(random(200, 500));
+        sendLoRa(payload);
+        ackOk = waitForAck(seqCounter);
+        if (ackOk) {
+          noAckCount = 0;
+          Serial.println("RETRY ACK: OK");
+        }
+      }
+    }
   }
 
-  float tempNow = dht.readTemperature();
-  float humNow  = dht.readHumidity();
-  int mq2Now    = analogRead(MQ2_PIN);
-  int flameNow  = digitalRead(FLAME_PIN);
-
-  updateLED(tempNow, humNow, mq2Now, flameNow);
+  // Update LED (but don't read sensors every single loop — too fast)
+  static unsigned long lastLedUpdate = 0;
+  if (millis() - lastLedUpdate >= 500) {
+    lastLedUpdate = millis();
+    float tempNow = dht.readTemperature();
+    float humNow  = dht.readHumidity();
+    int mq2Now    = analogRead(MQ2_PIN);
+    int flameNow  = digitalRead(FLAME_PIN);
+    updateLED(tempNow, humNow, mq2Now, flameNow);
+  }
 }
