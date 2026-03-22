@@ -147,13 +147,80 @@ function resetAlarmSilence() {
 }
 
 // =====================================================
-// BFP Fire Alarm Level Calculator
+// Haversine Distance (meters) between two GPS coords
 // =====================================================
-function getBFPAlarmLevel(fireCount) {
-  if (fireCount <= 0) return { level: 0, label: 'No Alarm', class: 'alarm-level--none' };
-  if (fireCount === 1) return { level: 1, label: '1st Alarm', class: 'alarm-level--1' };
-  if (fireCount <= 3) return { level: 2, label: '2nd Alarm', class: 'alarm-level--2' };
-  if (fireCount <= 5) return { level: 3, label: '3rd Alarm', class: 'alarm-level--3' };
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// =====================================================
+// Fire Proximity Clustering
+// Groups fire nodes within radiusMeters into clusters.
+// Each cluster = 1 fire incident for BFP alarm levels.
+// =====================================================
+function clusterFires(nodesData, radiusMeters = 100) {
+  const fireNodes = Object.values(nodesData).filter(n =>
+    n.online && n.category === 'Fire' &&
+    parseFloat(n.lat) !== 0 && parseFloat(n.lng) !== 0
+  );
+
+  if (fireNodes.length === 0) return { clusters: [], totalIncidents: 0, totalFireNodes: 0 };
+
+  // Union-Find for clustering
+  const parent = fireNodes.map((_, i) => i);
+  function find(x) {
+    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+    return x;
+  }
+  function union(a, b) {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  }
+
+  // Group nodes within radius
+  for (let i = 0; i < fireNodes.length; i++) {
+    for (let j = i + 1; j < fireNodes.length; j++) {
+      const dist = haversineDistance(
+        parseFloat(fireNodes[i].lat), parseFloat(fireNodes[i].lng),
+        parseFloat(fireNodes[j].lat), parseFloat(fireNodes[j].lng)
+      );
+      if (dist <= radiusMeters) {
+        union(i, j);
+      }
+    }
+  }
+
+  // Build clusters
+  const clusterMap = {};
+  fireNodes.forEach((node, i) => {
+    const root = find(i);
+    if (!clusterMap[root]) clusterMap[root] = [];
+    clusterMap[root].push(node);
+  });
+
+  const clusters = Object.values(clusterMap);
+  return {
+    clusters,
+    totalIncidents: clusters.length,
+    totalFireNodes: fireNodes.length
+  };
+}
+
+// =====================================================
+// BFP Fire Alarm Level Calculator (uses cluster count)
+// =====================================================
+function getBFPAlarmLevel(fireIncidentCount) {
+  if (fireIncidentCount <= 0) return { level: 0, label: 'No Alarm', class: 'alarm-level--none' };
+  if (fireIncidentCount === 1) return { level: 1, label: '1st Alarm', class: 'alarm-level--1' };
+  if (fireIncidentCount <= 3) return { level: 2, label: '2nd Alarm', class: 'alarm-level--2' };
+  if (fireIncidentCount <= 5) return { level: 3, label: '3rd Alarm', class: 'alarm-level--3' };
   return { level: 4, label: 'General Alarm', class: 'alarm-level--general' };
 }
 
@@ -173,6 +240,55 @@ function statusBadgeClass(online) {
 function safe(v) {
   if (v === undefined || v === null || v === '') return '—';
   return String(v);
+}
+
+// =====================================================
+// Human-readable time ago
+// =====================================================
+function formatTimeAgo(seconds) {
+  if (seconds === undefined || seconds === null) return '—';
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return seconds + 's ago';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+
+// =====================================================
+// RSSI Signal Quality
+// =====================================================
+function getSignalQuality(rssi) {
+  if (rssi === undefined || rssi === null || rssi === 0) return { label: '—', class: 'sig-none', bars: 0 };
+  if (rssi >= -70) return { label: 'Excellent', class: 'sig-great', bars: 4 };
+  if (rssi >= -90) return { label: 'Good', class: 'sig-good', bars: 3 };
+  if (rssi >= -110) return { label: 'Fair', class: 'sig-fair', bars: 2 };
+  return { label: 'Weak', class: 'sig-weak', bars: 1 };
+}
+
+function signalBarsHTML(rssi) {
+  const sig = getSignalQuality(rssi);
+  if (sig.bars === 0) return '<span style="color:var(--text-muted)">—</span>';
+  let bars = '';
+  for (let i = 1; i <= 4; i++) {
+    const h = 4 + i * 4;
+    const active = i <= sig.bars;
+    bars += `<span style="display:inline-block;width:4px;height:${h}px;margin:0 1px;border-radius:1px;vertical-align:bottom;background:${active ? (sig.bars >= 3 ? 'var(--ok)' : sig.bars >= 2 ? 'var(--warn)' : 'var(--fire)') : 'var(--border)'}"></span>`;
+  }
+  return `<span title="${sig.label} (${rssi} dBm)">${bars}</span>`;
+}
+
+// =====================================================
+// Live clock
+// =====================================================
+function startLiveClock(elementId) {
+  function update() {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  }
+  update();
+  setInterval(update, 1000);
 }
 
 // =====================================================

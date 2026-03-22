@@ -48,6 +48,12 @@ int firebasePushIndex = 0;         // Round-robin: 1-4 = nodes, 5 = gateway, 6+ 
 bool firebaseDataDirty = false;
 bool firebaseUnregDirty = false;
 
+// =====================================================
+// BEACON TIMING
+// =====================================================
+const unsigned long BEACON_INTERVAL_MS = 10000;  // Broadcast beacon every 10 seconds
+unsigned long lastBeaconSent = 0;
+
 WebServer server(80);
 
 // =====================================================
@@ -99,7 +105,7 @@ struct NodeData {
 
 NodeData nodes[5];   // use index 1..4
 
-const unsigned long NODE_TIMEOUT_MS = 20000;  // 20 seconds before marking offline
+const unsigned long NODE_TIMEOUT_MS = 25000;  // 25 seconds (matches node interval 8s * 3)
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -274,6 +280,26 @@ void sendAck(String key, int originNode, String seqStr) {
   LoRa.receive();            // Back to receive ASAP
 
   Serial.println("ACK -> Node " + String(originNode));
+}
+
+// =====================================================
+// GATEWAY BEACON BROADCAST
+// Short packet so nodes can discover the gateway
+// =====================================================
+void sendBeacon() {
+  String beacon = "CENSYS_GW|BEACON|" + String(millis());
+  LoRa.idle();
+  LoRa.beginPacket();
+  LoRa.print(beacon);
+  LoRa.endPacket(true);      // Non-blocking
+  delay(60);
+  LoRa.receive();
+  // Only log every 3rd beacon to reduce serial spam
+  static int beaconCount = 0;
+  beaconCount++;
+  if (beaconCount % 3 == 0) {
+    Serial.println("BEACON sent (" + String(beaconCount) + ")");
+  }
 }
 
 String nodeStatusText(int nodeId) {
@@ -527,6 +553,7 @@ void pushGatewayToFirebase() {
   json += "\"normal_count\":" + String(countCategory("Normal")) + ",";
   json += "\"warning_count\":" + String(countCategory("Warning")) + ",";
   json += "\"fire_count\":" + String(countCategory("Fire")) + ",";
+  json += "\"online_count\":" + String([](){ int c=0; for(int i=1;i<=4;i++) if(isNodeOnline(i)) c++; return c; }()) + ",";
   json += "\"timestamp\":{\".sv\":\"timestamp\"}";
   json += "}";
 
@@ -743,7 +770,7 @@ void handleRoot() {
         <div class="mini"><div class="k">Normal</div><div class="v" id="normalCount">0</div></div>
         <div class="mini"><div class="k">Warning</div><div class="v" id="warningCount">0</div></div>
         <div class="mini"><div class="k">Fire</div><div class="v" id="fireCount">0</div></div>
-        <div class="mini"><div class="k">Refresh</div><div class="v">Every 2s</div></div>
+        <div class="mini"><div class="k">Refresh</div><div class="v">Every 3s</div></div>
       </div>
     </section>
     <section class="grid" id="nodeGrid"></section>
@@ -772,7 +799,7 @@ async function loadData(){
     document.getElementById('nodeGrid').innerHTML=d.nodes.map(buildCard).join('');
   }catch(e){console.log(e);}
 }
-loadData();setInterval(loadData,2000);
+loadData();setInterval(loadData,3000);
 </script>
 </body>
 </html>
@@ -876,9 +903,10 @@ void setup() {
   }
 
   Serial.println("--------------------------------");
-  Serial.println("Breadboard 2 Gateway Ready (Firebase + LoRa Optimized)");
+  Serial.println("Breadboard 2 Gateway Ready (Beacon + Firebase + Mesh)");
   Serial.print("Gateway AP IP: ");
   Serial.println(WiFi.softAPIP());
+  Serial.println("Beacon interval: " + String(BEACON_INTERVAL_MS / 1000) + "s");
 
   server.on("/", handleRoot);
   server.on("/data", handleData);
@@ -887,6 +915,10 @@ void setup() {
   Serial.println("Local website ready");
   Serial.println("Connect to WiFi: CENSYS-Gateway");
   Serial.println("Open browser: http://192.168.4.1");
+
+  // Send first beacon immediately
+  sendBeacon();
+  lastBeaconSent = millis();
 }
 
 // =====================================================
@@ -895,6 +927,13 @@ void setup() {
 void loop() {
   server.handleClient();
   updateGatewayLED();
+
+  // ===== BEACON BROADCAST =====
+  // Send a short beacon every BEACON_INTERVAL_MS so nodes can discover the gateway
+  if (millis() - lastBeaconSent >= BEACON_INTERVAL_MS) {
+    sendBeacon();
+    lastBeaconSent = millis();
+  }
 
   // Firebase: push ONE item per cycle (non-blocking round-robin)
   // This is critical: pushing all 5+ items at once blocks LoRa for 5-10 seconds!
@@ -928,6 +967,11 @@ void loop() {
 
   String key  = getField(rx, 0);
   String type = getField(rx, 1);
+
+  // Ignore our own beacons bouncing back
+  if (type == "BEACON") {
+    return;
+  }
 
   if (type != "DATA") {
     // Could be an ACK or other type — ignore silently
@@ -1057,5 +1101,13 @@ void loop() {
   Serial.print("Path: "); Serial.println(pathStr);
   Serial.print("RSSI: "); Serial.println(rssi);
 
+  // Send ACK to the original node
   sendAck(key, originNode, seqStr);
+
+  // If this was a relayed packet, also ACK the relay node
+  if (hops > 0 && lastSender != originNode) {
+    delay(30);  // Small gap between ACKs
+    sendAck(key, lastSender, seqStr);
+    Serial.println("ACK -> Relay Node " + String(lastSender));
+  }
 }

@@ -11,173 +11,157 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     .page-content {
-      padding: 24px 0 40px;
+      padding: 12px 0 16px;
+      flex: 1;
     }
-
     .back-link {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       color: var(--text-muted);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
       transition: color var(--transition);
     }
-
     .back-link:hover {
       color: var(--brand);
     }
-
     .page-header {
       display: flex;
       flex-wrap: wrap;
       justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
-      margin-bottom: 24px;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
     }
-
     .page-header__title {
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 800;
     }
-
     .page-header__sub {
       color: var(--text-secondary);
-      font-size: 14px;
-      margin-top: 4px;
+      font-size: 13px;
+      margin-top: 2px;
     }
-
-    .map-section {
-      margin-bottom: 24px;
-    }
-
     .map-container {
-      height: 480px;
+      height: calc(100vh - 240px);
+      min-height: 400px;
     }
-
-    @media (min-height: 800px) {
-      .map-container {
-        height: 55vh;
-      }
-    }
-
-    .nodes-panel {
-      margin-top: 24px;
-    }
-
     .node-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin-bottom: 16px;
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 10px;
       transition: all var(--transition);
     }
-
     .node-card:hover {
       box-shadow: var(--shadow-md);
     }
-
     .node-card--fire {
       border-color: var(--fire-border);
       border-width: 2px;
     }
-
     .node-card--warn {
       border-color: var(--warn-border);
       border-width: 2px;
     }
-
     .node-card__header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
-
     .node-card__title {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
     }
-
     .node-card__grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 6px;
     }
-
     .node-card__field {
-      padding: 8px 0;
+      padding: 4px 0;
     }
-
     .node-card__label {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--text-muted);
     }
-
     .node-card__value {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
-      margin-top: 2px;
+      margin-top: 1px;
     }
-
     .leaflet-popup .popup-title {
       font-weight: 700;
-      font-size: 15px;
-      margin-bottom: 6px;
+      font-size: 14px;
+      margin-bottom: 4px;
     }
-
     .leaflet-popup .popup-row {
       display: flex;
       justify-content: space-between;
-      padding: 3px 0;
-      font-size: 13px;
+      padding: 2px 0;
+      font-size: 12px;
       border-bottom: 1px solid #f0f0f0;
     }
-
     .leaflet-popup .popup-row:last-child {
       border-bottom: none;
     }
-
     .leaflet-popup .popup-label {
       color: #6b7280;
       font-weight: 500;
     }
-
     .leaflet-popup .popup-value {
       font-weight: 600;
     }
-
     .legend {
       display: flex;
-      gap: 16px;
+      gap: 14px;
       flex-wrap: wrap;
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 8px;
+      font-size: 12px;
     }
-
     .legend__item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
-
     .legend__dot {
-      width: 14px;
-      height: 14px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       border: 2px solid rgba(0, 0, 0, 0.15);
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
   </style>
 </head>
 
 <body>
+  <!-- MOBILE INCOMPATIBILITY NOTICE -->
+  <div class="mobile-block" id="mobileBlock">
+    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__title">Desktop View Required</div>
+    <div class="mobile-block__text">
+      The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
+    </div>
+    <div class="mobile-block__hint">
+      📱 Rotate to landscape or use a desktop browser
+    </div>
+  </div>
+
   <div class="page-wrapper">
     <!-- NAVBAR -->
     <nav class="navbar">
@@ -186,6 +170,7 @@
         <span id="navTitle">CENSYS</span>
       </div>
       <div class="navbar__actions">
+        <span class="navbar__clock" id="liveClock"></span>
         <span class="navbar__user" id="navUser"></span>
         <button class="btn btn--ghost btn--sm" onclick="handleBack()">← Back</button>
         <button class="btn btn--ghost btn--sm" onclick="handleLogout()">Logout</button>
@@ -193,7 +178,7 @@
     </nav>
 
     <!-- FIRE ALARM BANNER (fire station only) -->
-    <div class="container mt-16">
+    <div class="container mt-8">
       <div class="alarm-banner alarm-hidden" id="alarmBanner">
         <div>
           <div class="alarm-banner__text">🔥 FIRE DETECTED IN THIS AREA</div>
@@ -217,23 +202,21 @@
           <div id="pageBadge"></div>
         </div>
 
-        <!-- MAP -->
-        <div class="map-section">
-          <div class="map-container" id="map"></div>
-          <div class="legend">
-            <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+        <!-- SPLIT LAYOUT: Map left, Node cards right -->
+        <div class="layout-split">
+          <div class="layout-split__main">
+            <div class="map-container" id="map"></div>
+            <div class="legend">
+              <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+            </div>
           </div>
-        </div>
-
-        <!-- NODE CARDS -->
-        <div class="nodes-panel">
-          <div class="section-title" style="font-size:20px; font-weight:700; margin-bottom:16px;">
-            <span>📡</span> Sensor Nodes
+          <div class="layout-split__side">
+            <div class="section-title"><span>📡</span> Sensor Nodes</div>
+            <div class="scroll-panel" id="nodeCards"></div>
           </div>
-          <div id="nodeCards"></div>
         </div>
       </div>
     </main>
@@ -274,6 +257,8 @@
     document.getElementById('pageTitle').textContent = brgyInfo.name;
     document.getElementById('navTitle').textContent = `CENSYS — ${brgyInfo.name}`;
 
+    startLiveClock('liveClock');
+
     if (role === 'firestation') {
       document.getElementById('navUser').textContent = 'Fire Station';
       document.getElementById('backLink').href = 'dashboard-firestation.html';
@@ -282,7 +267,6 @@
       document.getElementById('navUser').textContent = brgyInfo.name;
       document.getElementById('backLink').href = 'dashboard-barangay.html';
       document.getElementById('backLink').textContent = '← Back to Dashboard';
-      // Hide alarm silence for barangay personnel
       document.getElementById('silenceBtn').style.display = 'none';
     }
 
@@ -344,19 +328,19 @@
 
     function buildPopupContent(node) {
       return `
-        <div style="min-width:200px">
+        <div style="min-width:190px">
           <div class="popup-title">Node ${safe(node.node)}</div>
           <div class="popup-row"><span class="popup-label">Status</span><span class="popup-value">${node.online ? 'Online' : 'Offline'}</span></div>
           <div class="popup-row"><span class="popup-label">Category</span><span class="popup-value" style="color:${getCategoryColor(node.category, node.online)}">${safe(node.category)}</span></div>
-          <div class="popup-row"><span class="popup-label">Temperature</span><span class="popup-value">${safe(node.temp)}</span></div>
+          <div class="popup-row"><span class="popup-label">Temp</span><span class="popup-value">${safe(node.temp)}</span></div>
           <div class="popup-row"><span class="popup-label">Humidity</span><span class="popup-value">${safe(node.humid)}</span></div>
           <div class="popup-row"><span class="popup-label">Smoke</span><span class="popup-value">${safe(node.smoke)}</span></div>
-          <div class="popup-row"><span class="popup-label">Fire Sensor</span><span class="popup-value">${safe(node.fire)}</span></div>
+          <div class="popup-row"><span class="popup-label">Fire</span><span class="popup-value">${safe(node.fire)}</span></div>
           <div class="popup-row"><span class="popup-label">Health</span><span class="popup-value">${safe(node.health)}</span></div>
-          <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${safe(node.rssi)}</span></div>
+          <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}</span></div>
           <div class="popup-row"><span class="popup-label">Hops</span><span class="popup-value">${safe(node.hops)}</span></div>
           <div class="popup-row"><span class="popup-label">Path</span><span class="popup-value">${safe(node.path)}</span></div>
-          <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${safe(node.last_seen_sec)}s ago</span></div>
+          <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${formatTimeAgo(node.last_seen_sec)}</span></div>
         </div>
       `;
     }
@@ -369,15 +353,12 @@
         if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
 
         const color = getCategoryColor(node.category, node.online);
-        const pulseClass = node.category === 'Fire' && node.online ? 'fire-pulse' : '';
 
         if (markers[key]) {
-          // Update existing marker
           markers[key].setLatLng([lat, lng]);
           markers[key].setStyle({ color: color, fillColor: color });
           markers[key].setPopupContent(buildPopupContent(node));
         } else {
-          // Create new marker
           const marker = L.circleMarker([lat, lng], {
             radius: 14,
             color: color,
@@ -409,7 +390,7 @@
       const entries = Object.entries(nodes);
 
       if (entries.length === 0) {
-        container.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">No sensor nodes assigned to this barangay yet.</p></div>`;
+        container.innerHTML = `<div class="card text-center" style="padding:30px"><p class="text-muted">No sensor nodes assigned to this barangay yet.</p></div>`;
         return;
       }
 
@@ -423,7 +404,7 @@
         return `
           <div class="node-card ${borderClass}">
             <div class="node-card__header">
-              <div style="display:flex; align-items:center; gap:10px">
+              <div style="display:flex; align-items:center; gap:8px">
                 <span class="node-card__title">Node ${safe(node.node)}</span>
                 ${statusBadge}
               </div>
@@ -447,36 +428,28 @@
                 <div class="node-card__value">${safe(node.fire)}</div>
               </div>
               <div class="node-card__field">
-                <div class="node-card__label">Health</div>
-                <div class="node-card__value">${safe(node.health)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">RSSI</div>
-                <div class="node-card__value">${safe(node.rssi)}</div>
+                <div class="node-card__label">Signal</div>
+                <div class="node-card__value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}dBm</div>
               </div>
               <div class="node-card__field">
                 <div class="node-card__label">Hops</div>
                 <div class="node-card__value">${safe(node.hops)}</div>
               </div>
               <div class="node-card__field">
+                <div class="node-card__label">Health</div>
+                <div class="node-card__value">${safe(node.health)}</div>
+              </div>
+              <div class="node-card__field">
                 <div class="node-card__label">Path</div>
                 <div class="node-card__value">${safe(node.path)}</div>
               </div>
               <div class="node-card__field">
-                <div class="node-card__label">Latitude</div>
-                <div class="node-card__value">${safe(node.lat)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">Longitude</div>
-                <div class="node-card__value">${safe(node.lng)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">Sequence</div>
-                <div class="node-card__value">${safe(node.seq)}</div>
+                <div class="node-card__label">Coordinates</div>
+                <div class="node-card__value">${safe(node.lat)}, ${safe(node.lng)}</div>
               </div>
               <div class="node-card__field">
                 <div class="node-card__label">Last Seen</div>
-                <div class="node-card__value">${safe(node.last_seen_sec)}s ago</div>
+                <div class="node-card__value">${formatTimeAgo(node.last_seen_sec)}</div>
               </div>
             </div>
           </div>
@@ -490,15 +463,18 @@
     let prevFireCount = 0;
 
     function handleAlarm(filteredNodes) {
-      const fireCount = Object.values(filteredNodes).filter(n => n.online && n.category === 'Fire').length;
+      // Use proximity clustering for alarm level
+      const fireResult = clusterFires(filteredNodes, 100);
+      const fireIncidents = fireResult.totalIncidents;
+      const fireNodeCount = fireResult.totalFireNodes;
       const banner = document.getElementById('alarmBanner');
 
-      if (fireCount > 0) {
+      if (fireNodeCount > 0) {
         banner.classList.remove('alarm-hidden');
         document.getElementById('alarmBannerSub').textContent =
-          `${fireCount} node(s) reporting fire in ${brgyInfo.name}`;
+          `${fireNodeCount} node(s) reporting fire in ${brgyInfo.name} (${fireIncidents} incident(s))`;
 
-        if (fireCount > prevFireCount) {
+        if (fireIncidents > prevFireCount) {
           resetAlarmSilence();
         }
 
@@ -510,12 +486,12 @@
         stopAlarmSound();
         resetAlarmSilence();
       }
-      prevFireCount = fireCount;
+      prevFireCount = fireIncidents;
 
       // Page badge
-      const alarm = getBFPAlarmLevel(fireCount);
+      const alarm = getBFPAlarmLevel(fireIncidents);
       const pageBadge = document.getElementById('pageBadge');
-      if (fireCount > 0) {
+      if (fireIncidents > 0) {
         pageBadge.innerHTML = `<div class="alarm-level ${alarm.class}"><span>🔥</span> ${alarm.label}</div>`;
       } else {
         pageBadge.innerHTML = `<div class="alarm-level alarm-level--none"><span>✅</span> All Clear</div>`;

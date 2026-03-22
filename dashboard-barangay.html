@@ -9,66 +9,68 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    .page-content { padding: 24px 0 40px; }
+    .page-content { padding: 16px 0 20px; flex: 1; }
     .welcome-banner {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow);
-      padding: 28px 32px;
-      margin-bottom: 24px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
     }
     .welcome-banner__title {
-      font-size: 26px;
+      font-size: 22px;
       font-weight: 800;
     }
     .welcome-banner__sub {
       color: var(--text-secondary);
-      font-size: 15px;
-      margin-top: 6px;
+      font-size: 13px;
+      margin-top: 2px;
     }
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
     }
     .section-title {
-      font-size: 20px;
+      font-size: 15px;
       font-weight: 700;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
-    .map-container { height: 420px; }
-    @media (min-height: 800px) {
-      .map-container { height: 50vh; }
-    }
+    .map-container { height: calc(100vh - 280px); min-height: 350px; }
     .legend {
       display: flex;
-      gap: 16px;
+      gap: 14px;
       flex-wrap: wrap;
-      margin-top: 12px;
-      font-size: 13px;
+      margin-top: 8px;
+      font-size: 12px;
     }
     .legend__item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
     }
     .legend__dot {
-      width: 14px;
-      height: 14px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       border: 2px solid rgba(0,0,0,0.15);
     }
     .node-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin-bottom: 16px;
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 10px;
       transition: all var(--transition);
     }
     .node-card:hover { box-shadow: var(--shadow-md); }
@@ -78,30 +80,30 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
-    .node-card__title { font-size: 18px; font-weight: 700; }
+    .node-card__title { font-size: 16px; font-weight: 700; }
     .node-card__grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 6px;
     }
-    .node-card__field { padding: 8px 0; }
+    .node-card__field { padding: 4px 0; }
     .node-card__label {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--text-muted);
     }
-    .node-card__value { font-size: 15px; font-weight: 600; margin-top: 2px; }
-    .leaflet-popup .popup-title { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+    .node-card__value { font-size: 14px; font-weight: 600; margin-top: 1px; }
+    .leaflet-popup .popup-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
     .leaflet-popup .popup-row {
       display: flex;
       justify-content: space-between;
-      padding: 3px 0;
-      font-size: 13px;
+      padding: 2px 0;
+      font-size: 12px;
       border-bottom: 1px solid #f0f0f0;
     }
     .leaflet-popup .popup-row:last-child { border-bottom: none; }
@@ -111,25 +113,37 @@
       background: linear-gradient(135deg, #fef2f2, #fee2e2);
       border: 2px solid var(--fire-border);
       border-radius: var(--radius);
-      padding: 20px 24px;
-      margin-bottom: 24px;
+      padding: 14px 20px;
+      margin-bottom: 16px;
       text-align: center;
       animation: alarm-pulse 1.5s ease-in-out infinite;
     }
     .fire-warning-banner.hidden { display: none; }
     .fire-warning-banner__title {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
       color: var(--fire);
     }
     .fire-warning-banner__sub {
-      font-size: 14px;
+      font-size: 13px;
       color: #991b1b;
-      margin-top: 4px;
+      margin-top: 2px;
     }
   </style>
 </head>
 <body>
+  <!-- MOBILE INCOMPATIBILITY NOTICE -->
+  <div class="mobile-block" id="mobileBlock">
+    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__title">Desktop View Required</div>
+    <div class="mobile-block__text">
+      The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
+    </div>
+    <div class="mobile-block__hint">
+      📱 Rotate to landscape or use a desktop browser
+    </div>
+  </div>
+
   <div class="page-wrapper">
     <!-- NAVBAR -->
     <nav class="navbar">
@@ -138,6 +152,7 @@
         <span id="navTitle">CENSYS</span>
       </div>
       <div class="navbar__actions">
+        <span class="navbar__clock" id="liveClock"></span>
         <span class="navbar__user" id="navUser"></span>
         <button class="btn btn--ghost btn--sm" onclick="handleLogout()">Logout</button>
       </div>
@@ -153,15 +168,18 @@
 
         <!-- WELCOME -->
         <div class="welcome-banner">
-          <h1 class="welcome-banner__title" id="welcomeTitle">Welcome</h1>
-          <p class="welcome-banner__sub" id="welcomeSub">Real-time fire monitoring dashboard for your barangay.</p>
+          <div>
+            <h1 class="welcome-banner__title" id="welcomeTitle">Welcome</h1>
+            <p class="welcome-banner__sub" id="welcomeSub">Real-time fire monitoring dashboard for your barangay.</p>
+          </div>
+          <div id="statusBadge"></div>
         </div>
 
         <!-- STATS -->
         <div class="stats-row" id="statsRow">
           <div class="stat">
             <div class="stat__value" id="totalNodes" style="color:var(--brand)">0</div>
-            <div class="stat__label">Total Nodes</div>
+            <div class="stat__label">Total</div>
           </div>
           <div class="stat">
             <div class="stat__value" id="onlineNodes" style="color:var(--ok)">0</div>
@@ -181,22 +199,22 @@
           </div>
         </div>
 
-        <!-- MAP -->
-        <div class="mb-24">
-          <div class="section-title"><span>🗺️</span> Node Locations</div>
-          <div class="map-container" id="map"></div>
-          <div class="legend">
-            <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
-            <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+        <!-- SPLIT LAYOUT: Map left, Node cards right -->
+        <div class="layout-split">
+          <div class="layout-split__main">
+            <div class="section-title"><span>🗺️</span> Node Locations</div>
+            <div class="map-container" id="map"></div>
+            <div class="legend">
+              <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
+            </div>
           </div>
-        </div>
-
-        <!-- NODE CARDS -->
-        <div>
-          <div class="section-title"><span>📡</span> Sensor Nodes</div>
-          <div id="nodeCards"></div>
+          <div class="layout-split__side">
+            <div class="section-title"><span>📡</span> Sensor Nodes</div>
+            <div class="scroll-panel" id="nodeCards"></div>
+          </div>
         </div>
       </div>
     </main>
@@ -233,7 +251,9 @@
     document.getElementById('navTitle').textContent = `CENSYS — ${brgyInfo.name}`;
     document.getElementById('navUser').textContent = brgyInfo.name;
     document.getElementById('welcomeTitle').textContent = brgyInfo.name;
-    document.getElementById('welcomeSub').textContent = `Real-time fire monitoring dashboard — ${brgyInfo.name}, Cebu City`;
+    document.getElementById('welcomeSub').textContent = `Real-time fire monitoring — ${brgyInfo.name}, Cebu City`;
+
+    startLiveClock('liveClock');
 
     function handleLogout() {
       clearSession();
@@ -277,17 +297,16 @@
 
     function buildPopupContent(node) {
       return `
-        <div style="min-width:200px">
+        <div style="min-width:190px">
           <div class="popup-title">Node ${safe(node.node)}</div>
           <div class="popup-row"><span class="popup-label">Status</span><span class="popup-value">${node.online ? 'Online' : 'Offline'}</span></div>
           <div class="popup-row"><span class="popup-label">Category</span><span class="popup-value" style="color:${getCategoryColor(node.category, node.online)}">${safe(node.category)}</span></div>
-          <div class="popup-row"><span class="popup-label">Temperature</span><span class="popup-value">${safe(node.temp)}</span></div>
+          <div class="popup-row"><span class="popup-label">Temp</span><span class="popup-value">${safe(node.temp)}</span></div>
           <div class="popup-row"><span class="popup-label">Humidity</span><span class="popup-value">${safe(node.humid)}</span></div>
           <div class="popup-row"><span class="popup-label">Smoke</span><span class="popup-value">${safe(node.smoke)}</span></div>
-          <div class="popup-row"><span class="popup-label">Fire Sensor</span><span class="popup-value">${safe(node.fire)}</span></div>
-          <div class="popup-row"><span class="popup-label">Health</span><span class="popup-value">${safe(node.health)}</span></div>
-          <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${safe(node.rssi)}</span></div>
-          <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${safe(node.last_seen_sec)}s ago</span></div>
+          <div class="popup-row"><span class="popup-label">Fire</span><span class="popup-value">${safe(node.fire)}</span></div>
+          <div class="popup-row"><span class="popup-label">RSSI</span><span class="popup-value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}</span></div>
+          <div class="popup-row"><span class="popup-label">Last Seen</span><span class="popup-value">${formatTimeAgo(node.last_seen_sec)}</span></div>
         </div>
       `;
     }
@@ -334,7 +353,7 @@
       const entries = Object.entries(nodes);
 
       if (entries.length === 0) {
-        container.innerHTML = `<div class="card text-center" style="padding:40px"><p class="text-muted">No sensor nodes assigned to this barangay yet.</p></div>`;
+        container.innerHTML = `<div class="card text-center" style="padding:30px"><p class="text-muted">No sensor nodes assigned to this barangay yet.</p></div>`;
         return;
       }
 
@@ -347,7 +366,7 @@
         return `
           <div class="node-card ${borderClass}">
             <div class="node-card__header">
-              <div style="display:flex; align-items:center; gap:10px">
+              <div style="display:flex; align-items:center; gap:8px">
                 <span class="node-card__title">Node ${safe(node.node)}</span>
                 ${statusBadge}
               </div>
@@ -371,36 +390,20 @@
                 <div class="node-card__value">${safe(node.fire)}</div>
               </div>
               <div class="node-card__field">
-                <div class="node-card__label">Health</div>
-                <div class="node-card__value">${safe(node.health)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">RSSI</div>
-                <div class="node-card__value">${safe(node.rssi)}</div>
+                <div class="node-card__label">Signal</div>
+                <div class="node-card__value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}dBm</div>
               </div>
               <div class="node-card__field">
                 <div class="node-card__label">Hops</div>
                 <div class="node-card__value">${safe(node.hops)}</div>
               </div>
               <div class="node-card__field">
-                <div class="node-card__label">Path</div>
-                <div class="node-card__value">${safe(node.path)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">Latitude</div>
-                <div class="node-card__value">${safe(node.lat)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">Longitude</div>
-                <div class="node-card__value">${safe(node.lng)}</div>
-              </div>
-              <div class="node-card__field">
-                <div class="node-card__label">Sequence</div>
-                <div class="node-card__value">${safe(node.seq)}</div>
+                <div class="node-card__label">Health</div>
+                <div class="node-card__value">${safe(node.health)}</div>
               </div>
               <div class="node-card__field">
                 <div class="node-card__label">Last Seen</div>
-                <div class="node-card__value">${safe(node.last_seen_sec)}s ago</div>
+                <div class="node-card__value">${formatTimeAgo(node.last_seen_sec)}</div>
               </div>
             </div>
           </div>
@@ -424,7 +427,19 @@
       document.getElementById('warningNodes').textContent = warningCount;
       document.getElementById('fireNodes').textContent = fireCount;
 
-      // Fire warning banner (barangay personnel see it but can't silence alarm at station)
+      // Status badge
+      const badge = document.getElementById('statusBadge');
+      if (fireCount > 0) {
+        badge.innerHTML = '<span class="badge badge--fire"><span class="badge__dot badge__dot--pulse"></span>FIRE</span>';
+      } else if (warningCount > 0) {
+        badge.innerHTML = '<span class="badge badge--warn">Warning</span>';
+      } else if (onlineCount > 0) {
+        badge.innerHTML = '<span class="badge badge--ok">All Normal</span>';
+      } else {
+        badge.innerHTML = '<span class="badge badge--offline">No Data</span>';
+      }
+
+      // Fire warning banner
       const banner = document.getElementById('fireWarning');
       if (fireCount > 0) {
         banner.classList.remove('hidden');

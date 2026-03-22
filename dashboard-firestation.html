@@ -8,30 +8,31 @@
   <link rel="stylesheet" href="styles.css">
   <style>
     .page-content {
-      padding: 24px 0 40px;
+      padding: 16px 0 20px;
+      flex: 1;
     }
     .section-title {
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 700;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .section-title__icon {
-      font-size: 22px;
+      font-size: 18px;
     }
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
     }
     .brgy-tile {
       background: var(--surface);
       border: 2px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 28px 24px;
+      border-radius: var(--radius);
+      padding: 18px 16px;
       cursor: pointer;
       transition: all 0.25s var(--ease);
       text-decoration: none;
@@ -43,39 +44,39 @@
     .brgy-tile:hover {
       border-color: var(--brand);
       box-shadow: var(--shadow-md);
-      transform: translateY(-3px);
+      transform: translateY(-2px);
     }
     .brgy-tile__header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .brgy-tile__name {
-      font-size: 19px;
+      font-size: 16px;
       font-weight: 700;
     }
     .brgy-tile__city {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
     }
     .brgy-tile__stats {
       display: flex;
-      gap: 10px;
-      margin-top: 12px;
+      gap: 8px;
+      margin-top: 8px;
       flex-wrap: wrap;
     }
     .brgy-tile__stat {
       display: flex;
       align-items: center;
-      gap: 5px;
-      font-size: 13px;
+      gap: 4px;
+      font-size: 12px;
       font-weight: 600;
     }
     .brgy-tile__stat-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
     }
     .brgy-tile--has-fire {
@@ -87,32 +88,37 @@
       50% { box-shadow: 0 0 24px rgba(220,38,38,0.15); }
     }
     .brgy-tile__node-count {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-secondary);
-      margin-top: 8px;
+      margin-top: 6px;
+    }
+    .brgy-tile__signal {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .alarm-section {
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
     .alarm-info {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-top: 16px;
-    }
-    @media (max-width: 640px) {
-      .alarm-info { grid-template-columns: 1fr; }
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 12px;
     }
     .alarm-protocol {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
+      border-radius: var(--radius-sm);
+      padding: 14px;
     }
     .alarm-protocol__title {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 700;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -122,19 +128,19 @@
       padding: 0;
     }
     .alarm-protocol__list li {
-      padding: 8px 0;
+      padding: 5px 0;
       border-bottom: 1px solid var(--border-light);
-      font-size: 14px;
+      font-size: 13px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .alarm-protocol__list li:last-child {
       border-bottom: none;
     }
     .alarm-protocol__dot {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
@@ -142,23 +148,35 @@
       font-weight: 700;
     }
     .silence-btn-area {
-      margin-top: 16px;
+      margin-top: 12px;
+    }
+    .cluster-info {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      padding: 10px 14px;
+      background: var(--surface-active);
+      border-radius: var(--radius-sm);
+      line-height: 1.5;
+    }
+    .cluster-info strong {
+      color: var(--text-primary);
     }
 
     /* Unregistered Nodes Section */
     .unreg-section {
-      margin-top: 32px;
-      margin-bottom: 24px;
+      margin-top: 16px;
+      margin-bottom: 16px;
     }
     .unreg-toggle {
       display: flex;
       align-items: center;
       justify-content: space-between;
       cursor: pointer;
-      padding: 16px 20px;
+      padding: 12px 16px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
       transition: all 0.2s var(--ease);
       user-select: none;
     }
@@ -169,19 +187,19 @@
     .unreg-toggle__left {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .unreg-toggle__title {
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 700;
     }
     .unreg-toggle__count {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--text-muted);
       font-weight: 500;
     }
     .unreg-toggle__arrow {
-      font-size: 16px;
+      font-size: 14px;
       transition: transform 0.2s var(--ease);
       color: var(--text-muted);
     }
@@ -190,7 +208,7 @@
     }
     .unreg-body {
       display: none;
-      margin-top: 12px;
+      margin-top: 8px;
     }
     .unreg-body.open {
       display: block;
@@ -198,94 +216,107 @@
     .unreg-card {
       background: var(--surface);
       border: 1px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 20px;
-      margin-bottom: 12px;
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 8px;
       position: relative;
     }
     .unreg-card::before {
       content: 'UNREGISTERED';
       position: absolute;
-      top: 10px;
-      right: 14px;
-      font-size: 10px;
+      top: 8px;
+      right: 10px;
+      font-size: 9px;
       font-weight: 700;
       letter-spacing: 1px;
       color: var(--text-muted);
       background: var(--offline-bg);
-      padding: 3px 8px;
+      padding: 2px 6px;
       border-radius: var(--radius-full);
     }
     .unreg-card__header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .unreg-card__title {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 700;
     }
     .unreg-card__passkey {
-      font-size: 12px;
+      font-size: 11px;
       font-family: monospace;
       color: var(--text-muted);
       background: var(--surface-active);
-      padding: 2px 8px;
+      padding: 2px 6px;
       border-radius: 4px;
     }
     .unreg-card__grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 6px;
     }
     .unreg-card__field {
-      padding: 6px 0;
+      padding: 4px 0;
     }
     .unreg-card__label {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       color: var(--text-muted);
     }
     .unreg-card__value {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
-      margin-top: 2px;
+      margin-top: 1px;
     }
     .unreg-empty {
       text-align: center;
-      padding: 32px 20px;
+      padding: 24px 16px;
       color: var(--text-muted);
-      font-size: 14px;
+      font-size: 13px;
       background: var(--surface);
       border: 1px dashed var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--radius-sm);
     }
     .unreg-notice {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 8px;
-      padding: 10px 14px;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 8px 12px;
       background: #fffbeb;
       border: 1px solid #fde68a;
       border-radius: var(--radius-sm);
-      font-size: 13px;
+      font-size: 12px;
       color: #92400e;
     }
   </style>
 </head>
 <body>
+  <!-- MOBILE INCOMPATIBILITY NOTICE -->
+  <div class="mobile-block" id="mobileBlock">
+    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__title">Desktop View Required</div>
+    <div class="mobile-block__text">
+      The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
+    </div>
+    <div class="mobile-block__hint">
+      📱 Rotate to landscape or use a desktop browser
+    </div>
+  </div>
+
   <div class="page-wrapper">
     <!-- NAVBAR -->
     <nav class="navbar">
       <div class="navbar__brand">
         <div class="navbar__brand-icon">C</div>
-        <span>CENSYS — San Nicolas Fire Station</span>
+        <span>CENSYS — Fire Station</span>
       </div>
       <div class="navbar__actions">
+        <span class="navbar__clock" id="liveClock"></span>
         <span class="navbar__user" id="navUser">San Nicolas Fire Station</span>
         <button class="btn btn--ghost btn--sm" id="logoutBtn" onclick="handleLogout()">Logout</button>
       </div>
@@ -304,28 +335,11 @@
           </button>
         </div>
 
-        <!-- PAGE HEADER -->
-        <div class="mt-24 mb-24">
-          <h1 style="font-size:28px; font-weight:800;">San Nicolas Fire Station</h1>
-          <p class="text-muted mt-8">Real-time overview of all monitored barangays in Cebu City</p>
-        </div>
-
-        <!-- BARANGAY TILES (top priority — visible immediately) -->
-        <section class="mb-24">
-          <div class="section-title">
-            <span class="section-title__icon">🗺️</span>
-            Monitored Barangays
-          </div>
-          <div class="grid-3" id="brgyGrid">
-            <!-- tiles rendered by JS -->
-          </div>
-        </section>
-
         <!-- STATS ROW -->
-        <div class="stats-row" id="statsRow">
+        <div class="stats-row mt-12" id="statsRow">
           <div class="stat">
             <div class="stat__value" id="totalNodes" style="color:var(--brand)">0</div>
-            <div class="stat__label">Total Nodes</div>
+            <div class="stat__label">Total</div>
           </div>
           <div class="stat">
             <div class="stat__value" id="onlineNodes" style="color:var(--ok)">0</div>
@@ -345,72 +359,86 @@
           </div>
         </div>
 
-        <!-- ALARM SECTION -->
-        <section class="alarm-section">
-          <div class="section-title">
-            <span class="section-title__icon">🚨</span>
-            BFP Fire Alarm Status
-          </div>
-          <div class="alarm-info">
-            <div>
+        <!-- SPLIT LAYOUT: Alarm + Protocol | Barangay Tiles -->
+        <div class="layout-split">
+          <!-- LEFT: Alarm Status -->
+          <div class="layout-split__main">
+            <section class="alarm-section">
+              <div class="section-title">
+                <span class="section-title__icon">🚨</span>
+                BFP Fire Alarm Status
+              </div>
               <div class="alarm-level" id="alarmLevelBadge">
                 <span id="alarmLevelIcon">✅</span>
                 <span id="alarmLevelText">No Alarm — All Clear</span>
               </div>
+              <div class="cluster-info" id="clusterInfo" style="display:none;"></div>
               <div class="silence-btn-area" id="silenceBtnArea" style="display:none;">
                 <button class="btn btn--danger btn--block" onclick="handleSilenceAlarm()">
                   🔇 Silence Fire Alarm
                 </button>
               </div>
-            </div>
-            <div class="alarm-protocol">
-              <div class="alarm-protocol__title">BFP Protocol Reference</div>
-              <ul class="alarm-protocol__list" id="protocolList">
-                <li>
-                  <span class="alarm-protocol__dot" style="background:var(--ok)"></span>
-                  <span><strong>No Alarm</strong> — All nodes normal</span>
-                </li>
-                <li>
-                  <span class="alarm-protocol__dot" style="background:var(--warn)"></span>
-                  <span><strong>1st Alarm</strong> — 1 node fire detected</span>
-                </li>
-                <li>
-                  <span class="alarm-protocol__dot" style="background:#c2410c"></span>
-                  <span><strong>2nd Alarm</strong> — 2–3 nodes fire detected</span>
-                </li>
-                <li>
-                  <span class="alarm-protocol__dot" style="background:var(--fire)"></span>
-                  <span><strong>3rd Alarm</strong> — 4–5 nodes fire detected</span>
-                </li>
-                <li>
-                  <span class="alarm-protocol__dot" style="background:#450a0a"></span>
-                  <span><strong>General Alarm</strong> — 6+ nodes / full escalation</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
 
-        <!-- UNREGISTERED NODES SECTION -->
-        <section class="unreg-section">
-          <div class="unreg-toggle" onclick="toggleUnregSection()">
-            <div class="unreg-toggle__left">
-              <span>📡</span>
-              <span class="unreg-toggle__title">Unregistered Nodes</span>
-              <span class="unreg-toggle__count" id="unregCount">(0 detected)</span>
+              <div class="alarm-protocol mt-12">
+                <div class="alarm-protocol__title">BFP Protocol Reference</div>
+                <ul class="alarm-protocol__list" id="protocolList">
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:var(--ok)"></span>
+                    <span><strong>No Alarm</strong> — All nodes normal</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:var(--warn)"></span>
+                    <span><strong>1st Alarm</strong> — 1 fire incident</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:#c2410c"></span>
+                    <span><strong>2nd Alarm</strong> — 2–3 fire incidents</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:var(--fire)"></span>
+                    <span><strong>3rd Alarm</strong> — 4–5 fire incidents</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:#450a0a"></span>
+                    <span><strong>General Alarm</strong> — 6+ incidents / full escalation</span>
+                  </li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- UNREGISTERED NODES -->
+            <section class="unreg-section">
+              <div class="unreg-toggle" onclick="toggleUnregSection()">
+                <div class="unreg-toggle__left">
+                  <span>📡</span>
+                  <span class="unreg-toggle__title">Unregistered Nodes</span>
+                  <span class="unreg-toggle__count" id="unregCount">(0 detected)</span>
+                </div>
+                <span class="unreg-toggle__arrow" id="unregArrow">▼</span>
+              </div>
+              <div class="unreg-notice">
+                <span>⚠️</span>
+                <span>Unregistered nodes are <strong>view-only</strong> — they do NOT trigger fire alarms.</span>
+              </div>
+              <div class="unreg-body" id="unregBody">
+                <div id="unregCards">
+                  <div class="unreg-empty">No unregistered nodes detected yet.</div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- RIGHT: Barangay Tiles -->
+          <div class="layout-split__side">
+            <div class="section-title">
+              <span class="section-title__icon">🗺️</span>
+              Monitored Barangays
             </div>
-            <span class="unreg-toggle__arrow" id="unregArrow">▼</span>
-          </div>
-          <div class="unreg-notice">
-            <span>⚠️</span>
-            <span>Unregistered nodes are <strong>view-only</strong> — they do NOT trigger fire alarms. These show raw sensor data from nodes without registered passkeys or assigned locations.</span>
-          </div>
-          <div class="unreg-body" id="unregBody">
-            <div id="unregCards">
-              <div class="unreg-empty">No unregistered nodes detected yet.</div>
+            <div id="brgyGrid" style="display:flex; flex-direction:column; gap:12px;">
+              <!-- tiles rendered by JS -->
             </div>
           </div>
-        </section>
+        </div>
       </div>
     </main>
 
@@ -432,6 +460,9 @@
         window.location.href = 'index.html';
       }
     })();
+
+    // Start live clock
+    startLiveClock('liveClock');
 
     function handleLogout() {
       clearSession();
@@ -465,37 +496,63 @@
       const onlineCount = allNodes.filter(n => n.online).length;
       const normalCount = allNodes.filter(n => n.online && n.category === 'Normal').length;
       const warningCount = allNodes.filter(n => n.online && n.category === 'Warning').length;
-      const fireCount = allNodes.filter(n => n.online && n.category === 'Fire').length;
+      const fireNodeCount = allNodes.filter(n => n.online && n.category === 'Fire').length;
 
       document.getElementById('totalNodes').textContent = allNodes.length;
       document.getElementById('onlineNodes').textContent = onlineCount;
       document.getElementById('normalNodes').textContent = normalCount;
       document.getElementById('warningNodes').textContent = warningCount;
-      document.getElementById('fireNodes').textContent = fireCount;
+      document.getElementById('fireNodes').textContent = fireNodeCount;
 
-      // BFP Alarm Level
-      const alarm = getBFPAlarmLevel(fireCount);
+      // ===== FIRE PROXIMITY CLUSTERING =====
+      const fireResult = clusterFires(nodesData, 100);
+      const fireIncidents = fireResult.totalIncidents;
+
+      // BFP Alarm Level (uses cluster/incident count, NOT raw node count)
+      const alarm = getBFPAlarmLevel(fireIncidents);
       const levelBadge = document.getElementById('alarmLevelBadge');
       levelBadge.className = 'alarm-level ' + alarm.class;
 
       const icons = ['✅', '⚠️', '🔥', '🔥🔥', '🚨'];
       document.getElementById('alarmLevelIcon').textContent = icons[alarm.level] || '✅';
-      document.getElementById('alarmLevelText').textContent =
-        alarm.level === 0 ? 'No Alarm — All Clear' :
-        `${alarm.label} — ${fireCount} node(s) reporting fire`;
+
+      if (alarm.level === 0) {
+        document.getElementById('alarmLevelText').textContent = 'No Alarm — All Clear';
+      } else {
+        document.getElementById('alarmLevelText').textContent =
+          `${alarm.label} — ${fireIncidents} fire incident(s)`;
+      }
+
+      // Cluster info display
+      const clusterInfoEl = document.getElementById('clusterInfo');
+      if (fireResult.totalFireNodes > 0) {
+        clusterInfoEl.style.display = 'block';
+        if (fireResult.totalFireNodes !== fireIncidents) {
+          let desc = `<strong>${fireResult.totalFireNodes}</strong> node(s) reporting fire, grouped into <strong>${fireIncidents}</strong> incident(s) by proximity. `;
+          fireResult.clusters.forEach((cluster, i) => {
+            const nodeIds = cluster.map(n => 'N' + n.node).join(', ');
+            desc += `Cluster ${i + 1}: ${nodeIds}. `;
+          });
+          clusterInfoEl.innerHTML = desc;
+        } else {
+          clusterInfoEl.innerHTML = `<strong>${fireResult.totalFireNodes}</strong> fire node(s) — each is a separate incident (nodes are far apart).`;
+        }
+      } else {
+        clusterInfoEl.style.display = 'none';
+      }
 
       // Fire alarm sound
       const banner = document.getElementById('alarmBanner');
       const silenceArea = document.getElementById('silenceBtnArea');
 
-      if (fireCount > 0) {
+      if (fireIncidents > 0) {
         banner.classList.remove('alarm-hidden');
         silenceArea.style.display = 'block';
         document.getElementById('alarmBannerSub').textContent =
-          `${alarm.label}: ${fireCount} node(s) detected fire. Respond immediately.`;
+          `${alarm.label}: ${fireIncidents} fire incident(s) detected. Respond immediately.`;
 
         // New fire event resets silence
-        if (fireCount > prevFireCount) {
+        if (fireIncidents > prevFireCount) {
           resetAlarmSilence();
         }
 
@@ -508,7 +565,7 @@
         stopAlarmSound();
         resetAlarmSilence();
       }
-      prevFireCount = fireCount;
+      prevFireCount = fireIncidents;
 
       // Highlight active protocol line
       const items = document.querySelectorAll('#protocolList li');
@@ -527,9 +584,9 @@
 
     function renderBarangayTiles(nodesData) {
       const brgys = {
-        kalunasan: { name: 'Barangay Kalunasan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 },
-        sannicolas: { name: 'Barangay San Nicolas', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 },
-        kalubihan: { name: 'Barangay Kalubihan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0 }
+        kalunasan: { name: 'Barangay Kalunasan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0, rssiSum: 0 },
+        sannicolas: { name: 'Barangay San Nicolas', nodes: [], fire: 0, warn: 0, normal: 0, online: 0, rssiSum: 0 },
+        kalubihan: { name: 'Barangay Kalubihan', nodes: [], fire: 0, warn: 0, normal: 0, online: 0, rssiSum: 0 }
       };
 
       Object.values(nodesData).forEach(node => {
@@ -538,6 +595,7 @@
           brgys[b].nodes.push(node);
           if (node.online) {
             brgys[b].online++;
+            brgys[b].rssiSum += (node.rssi || 0);
             if (node.category === 'Fire') brgys[b].fire++;
             else if (node.category === 'Warning') brgys[b].warn++;
             else brgys[b].normal++;
@@ -557,6 +615,11 @@
           ? `<span class="badge badge--ok">Normal</span>`
           : `<span class="badge badge--offline">No Data</span>`;
 
+        const avgRssi = brgy.online > 0 ? Math.round(brgy.rssiSum / brgy.online) : 0;
+        const lastSeen = brgy.nodes.length > 0
+          ? Math.min(...brgy.nodes.filter(n => n.online).map(n => n.last_seen_sec || 999))
+          : null;
+
         return `
           <a href="barangay-detail.html?barangay=${key}" class="brgy-tile${fireClass}" id="tile-${key}">
             <div class="brgy-tile__header">
@@ -566,7 +629,7 @@
               </div>
               ${statusBadge}
             </div>
-            <div class="brgy-tile__node-count">${brgy.nodes.length} sensor node(s) deployed</div>
+            <div class="brgy-tile__node-count">${brgy.nodes.length} node(s) · ${brgy.online} online</div>
             <div class="brgy-tile__stats">
               <div class="brgy-tile__stat">
                 <span class="brgy-tile__stat-dot" style="background:var(--ok)"></span>
@@ -580,6 +643,10 @@
                 <span class="brgy-tile__stat-dot" style="background:var(--fire)"></span>
                 ${brgy.fire} Fire
               </div>
+            </div>
+            <div class="brgy-tile__signal">
+              Signal: ${signalBarsHTML(avgRssi)}
+              ${lastSeen !== null && lastSeen < 999 ? ` · Last: ${formatTimeAgo(lastSeen)}` : ''}
             </div>
           </a>
         `;
@@ -623,24 +690,16 @@
                 <div class="unreg-card__value">${safe(node.smoke)}</div>
               </div>
               <div class="unreg-card__field">
-                <div class="unreg-card__label">Fire Sensor</div>
+                <div class="unreg-card__label">Fire</div>
                 <div class="unreg-card__value">${safe(node.fire)}</div>
               </div>
               <div class="unreg-card__field">
-                <div class="unreg-card__label">Health</div>
-                <div class="unreg-card__value">${safe(node.health)}</div>
-              </div>
-              <div class="unreg-card__field">
                 <div class="unreg-card__label">RSSI</div>
-                <div class="unreg-card__value">${safe(node.rssi)}</div>
-              </div>
-              <div class="unreg-card__field">
-                <div class="unreg-card__label">Hops</div>
-                <div class="unreg-card__value">${safe(node.hops)}</div>
+                <div class="unreg-card__value">${signalBarsHTML(node.rssi)} ${safe(node.rssi)}</div>
               </div>
               <div class="unreg-card__field">
                 <div class="unreg-card__label">Last Seen</div>
-                <div class="unreg-card__value">${safe(node.last_seen_sec)}s ago</div>
+                <div class="unreg-card__value">${formatTimeAgo(node.last_seen_sec)}</div>
               </div>
             </div>
           </div>
