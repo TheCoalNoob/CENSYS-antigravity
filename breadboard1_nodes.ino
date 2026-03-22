@@ -48,10 +48,10 @@ const unsigned long GPS_CACHE_MAX_AGE_MS = 300000;  // 5 minutes max cache age
 // =====================================================
 // TIMING
 // =====================================================
-const unsigned long SEND_INTERVAL_MS = 5000;
-const unsigned long ACK_TIMEOUT_MS   = 1200;   // Increased for SF12 (slower air time)
-const unsigned long NETWORK_OK_MS    = 20000;
-const int MAX_HOPS = 6;
+const unsigned long SEND_INTERVAL_MS = 8000;     // 8 seconds between sends (more room for 4 nodes)
+const unsigned long ACK_TIMEOUT_MS   = 800;      // ACK wait time
+const unsigned long NETWORK_OK_MS    = 25000;
+const int MAX_HOPS = 3;                           // Reduced: nodes are close, no need for 6 hops
 
 // =====================================================
 // STATE
@@ -327,7 +327,8 @@ void processIncoming() {
     healthStr + "|" +
     newPath;
 
-  delay(random(60, 180));
+  // Longer random delay based on NODE_ID to avoid relay collisions
+  delay(random(200 + (NODE_ID * 100), 500 + (NODE_ID * 150)));
   sendPacket(relayPacket);
 
   Serial.println("--------------------------------");
@@ -419,16 +420,15 @@ void setup() {
     }
   }
 
-  // ===== MAXIMIZE LORA RANGE (must match Breadboard 2 gateway) =====
-  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
+  LoRa.setSpreadingFactor(10);                    // SF10 = great range + 4x faster than SF12 (avoids collisions)
   LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
-  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
+  LoRa.setCodingRate4(5);                          // 4/5 = good error correction, faster air time
   LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
-  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
+  LoRa.setPreambleLength(8);                       // Standard preamble length
   LoRa.enableCrc();                                // CRC catches corrupted packets automatically
   LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
 
-  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
+  Serial.println("LoRa: SF10, BW125k, CR4/5, TX20dBm, Preamble8, CRC ON");
 
   // Put LoRa in continuous receive mode
   LoRa.receive();
@@ -453,7 +453,10 @@ void loop() {
   // Process incoming LoRa packets (relay for mesh)
   processIncoming();
 
-  if (millis() - lastSendTime >= SEND_INTERVAL_MS) {
+  // Stagger transmissions: each node sends at a different time offset
+  // This prevents all 4 nodes from transmitting at the exact same moment
+  unsigned long nodeOffset = (unsigned long)(NODE_ID - 1) * 2000;  // 0ms, 2000ms, 4000ms, 6000ms
+  if (millis() - lastSendTime >= SEND_INTERVAL_MS && (millis() % SEND_INTERVAL_MS) >= nodeOffset && (millis() % SEND_INTERVAL_MS) < nodeOffset + 500) {
     lastSendTime = millis();
     seqCounter++;
 

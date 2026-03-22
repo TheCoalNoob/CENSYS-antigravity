@@ -41,7 +41,9 @@ const char* STA_PASS = "444everydayOK*";
 // Push interval — don't flood Firebase
 // =====================================================
 const unsigned long FIREBASE_PUSH_INTERVAL_MS = 3000;
+const unsigned long FIREBASE_STATUS_PUSH_MS = 15000;  // Push online/offline status every 15s
 unsigned long lastFirebasePush = 0;
+unsigned long lastStatusPush = 0;
 bool firebaseDataDirty = false;
 bool firebaseUnregDirty = false;
 
@@ -237,11 +239,20 @@ bool allNodesWorking() {
   return true;
 }
 
+bool anyNodeOnline() {
+  for (int i = 1; i <= 4; i++) {
+    if (isNodeOnline(i)) return true;
+  }
+  return false;
+}
+
 void updateGatewayLED() {
-  if (allNodesWorking()) {
+  if (anyNodeOnline()) {
+    // Solid = at least one node is connected and sending data
     digitalWrite(LED_PIN, HIGH);
     ledState = true;
   } else {
+    // Fast blink = no nodes connected
     if (millis() - lastLedBlink >= 180) {
       lastLedBlink = millis();
       ledState = !ledState;
@@ -811,15 +822,15 @@ void setup() {
   }
 
   // ===== MAXIMIZE LORA RANGE =====
-  LoRa.setSpreadingFactor(12);                    // SF12 = maximum range, best wall penetration
+  LoRa.setSpreadingFactor(10);                    // SF10 = great range + 4x faster than SF12 (avoids collisions)
   LoRa.setSignalBandwidth(125E3);                 // 125kHz = good balance of range and throughput
-  LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
+  LoRa.setCodingRate4(5);                          // 4/5 = good error correction, faster air time
   LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);    // 20dBm = maximum transmit power
-  LoRa.setPreambleLength(12);                      // Longer preamble = better sync through obstacles
+  LoRa.setPreambleLength(8);                       // Standard preamble length
   LoRa.enableCrc();                                // CRC catches corrupted packets automatically
   LoRa.setGain(0);                                 // AGC auto gain = best receive sensitivity
 
-  Serial.println("LoRa: SF12, BW125k, CR4/8, TX20dBm, Preamble12, CRC ON");
+  Serial.println("LoRa: SF10, BW125k, CR4/5, TX20dBm, Preamble8, CRC ON");
 
   // Put LoRa in continuous receive mode
   LoRa.receive();
@@ -871,7 +882,7 @@ void loop() {
   server.handleClient();
   updateGatewayLED();
 
-  // Periodic Firebase push for registered nodes
+  // Periodic Firebase push for registered nodes (when new data arrives)
   if (firebaseDataDirty && (millis() - lastFirebasePush >= FIREBASE_PUSH_INTERVAL_MS)) {
     pushAllToFirebase();
     if (firebaseUnregDirty) {
@@ -879,7 +890,14 @@ void loop() {
       firebaseUnregDirty = false;
     }
     lastFirebasePush = millis();
+    lastStatusPush = millis();
     firebaseDataDirty = false;
+  }
+
+  // Periodic status push (even without new data) so offline nodes get updated
+  if (millis() - lastStatusPush >= FIREBASE_STATUS_PUSH_MS) {
+    pushAllToFirebase();
+    lastStatusPush = millis();
   }
 
   int packetSize = LoRa.parsePacket();
