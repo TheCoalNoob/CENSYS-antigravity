@@ -21,12 +21,37 @@ const database = firebase.database();
 
 // =====================================================
 // Shared helper: listen to all nodes
-// Returns an unsubscribe function
+// IMPORTANT: Online status is determined by timestamp.
+// If a node hasn't sent data in 2 minutes, it's OFFLINE
+// regardless of the "online" field in Firebase.
+// This prevents "ghost online" nodes after power-off.
 // =====================================================
+const NODE_OFFLINE_TIMEOUT_MS = 120000;  // 2 minutes
+
 function listenToNodes(callback) {
   const ref = database.ref('nodes');
   ref.on('value', (snapshot) => {
     const data = snapshot.val() || {};
+    const now = Date.now();
+
+    // Override online status based on timestamp freshness
+    Object.keys(data).forEach(key => {
+      const node = data[key];
+      if (node && node.timestamp) {
+        const age = now - node.timestamp;
+        if (age > NODE_OFFLINE_TIMEOUT_MS) {
+          node.online = false;
+          node.last_seen_sec = Math.round(age / 1000);
+        } else {
+          node.online = true;
+          node.last_seen_sec = Math.round(age / 1000);
+        }
+      } else {
+        // No timestamp = never seen = offline
+        node.online = false;
+      }
+    });
+
     callback(data);
   });
   return () => ref.off('value');
