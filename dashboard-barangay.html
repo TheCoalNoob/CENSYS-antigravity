@@ -326,11 +326,11 @@
           markers[key].setPopupContent(buildPopupContent(node));
         } else {
           const marker = L.circleMarker([lat, lng], {
-            radius: 14,
+            radius: 7,
             color: color,
             fillColor: color,
             fillOpacity: 0.7,
-            weight: 3
+            weight: 2
           }).addTo(map);
 
           marker.bindPopup(buildPopupContent(node), { maxWidth: 280 });

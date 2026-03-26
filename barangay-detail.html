@@ -375,7 +375,7 @@
           markers[key].setPopupContent(buildPopupContent(node));
         } else {
           const marker = L.circleMarker([lat, lng], {
-            radius: 14, color: color, fillColor: color, fillOpacity: 0.7, weight: 3
+            radius: 7, color: color, fillColor: color, fillOpacity: 0.7, weight: 2
           }).addTo(map);
           marker.bindPopup(buildPopupContent(node), { maxWidth: 300 });
           marker.bindTooltip(`Node ${node.node}`, { permanent: false, direction: 'top', offset: [0, -10] });

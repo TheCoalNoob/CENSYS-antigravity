@@ -105,6 +105,25 @@ struct NodeData {
 
 NodeData nodes[5];   // use index 1..4
 
+// =====================================================
+// GPS PERSISTENCE — saved separately so they survive
+// no-fix / 0.0 / empty updates from nodes
+// =====================================================
+String savedLat[5] = {"", "", "", "", ""};
+String savedLng[5] = {"", "", "", "", ""};
+
+bool isValidGPS(String lat, String lng) {
+  lat.trim(); lng.trim();
+  if (lat.length() == 0 || lng.length() == 0) return false;
+  if (lat == "-" || lng == "-") return false;
+  if (lat == "0" || lat == "0.0" || lat == "0.00" || lat == "0.000000") return false;
+  if (lng == "0" || lng == "0.0" || lng == "0.00" || lng == "0.000000") return false;
+  float fLat = lat.toFloat();
+  float fLng = lng.toFloat();
+  if (fLat == 0.0 || fLng == 0.0) return false;
+  return true;
+}
+
 const unsigned long NODE_TIMEOUT_MS = 30000;  // 30 seconds (matches TDMA cycle 12s * 2.5)
 
 // =====================================================
@@ -489,49 +508,73 @@ void pushNodeToFirebase(int nodeId) {
   if (WiFi.status() != WL_CONNECTED) return;
   if (nodeId < 1 || nodeId > 4) return;
 
+  // SKIP nodes that have NEVER sent data — don't push blank data
+  if (nodes[nodeId].lastSeenMillis == 0) {
+    return;
+  }
+
   HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
 
   String url = String(FIREBASE_HOST) + "/nodes/node" + String(nodeId) + ".json?auth=" + String(FIREBASE_AUTH);
 
-  unsigned long ageSec = 0;
-  if (nodes[nodeId].lastSeenMillis > 0) {
-    ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
-  }
+  unsigned long ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
+  bool online = isNodeOnline(nodeId);
 
-  String json = "{";
-  json += "\"online\":" + String(isNodeOnline(nodeId) ? "true" : "false") + ",";
-  json += "\"node\":" + String(nodeId) + ",";
-  json += "\"barangay\":\"" + NODE_BARANGAY[nodeId] + "\",";
-  json += "\"last_sender\":" + String(nodes[nodeId].lastSender) + ",";
-  json += "\"seq\":" + String(nodes[nodeId].seq) + ",";
-  json += "\"hops\":" + String(nodes[nodeId].hops) + ",";
-  json += "\"temp\":\"" + esc(nodes[nodeId].temp) + "\",";
-  json += "\"humid\":\"" + esc(nodes[nodeId].humid) + "\",";
-  json += "\"smoke\":\"" + esc(nodes[nodeId].smoke) + "\",";
-  json += "\"fire\":\"" + esc(nodes[nodeId].fire) + "\",";
-  json += "\"lat\":\"" + esc(nodes[nodeId].lat) + "\",";
-  json += "\"lng\":\"" + esc(nodes[nodeId].lng) + "\",";
-  json += "\"health\":\"" + esc(nodes[nodeId].health) + "\",";
-  json += "\"path\":\"" + esc(nodes[nodeId].path) + "\",";
-  json += "\"category\":\"" + esc(nodes[nodeId].category) + "\",";
-  json += "\"rssi\":" + String(nodes[nodeId].rssi) + ",";
-  json += "\"last_seen_sec\":" + String(ageSec) + ",";
-  json += "\"passkey\":\"" + esc(nodes[nodeId].passkey) + "\",";
-  json += "\"timestamp\":{\".sv\":\"timestamp\"}";
-  json += "}";
+  if (online) {
+    // ONLINE: Full PUT with all sensor data + fresh timestamp
+    String json = "{";
+    json += "\"online\":true,";
+    json += "\"node\":" + String(nodeId) + ",";
+    json += "\"barangay\":\"" + NODE_BARANGAY[nodeId] + "\",";
+    json += "\"last_sender\":" + String(nodes[nodeId].lastSender) + ",";
+    json += "\"seq\":" + String(nodes[nodeId].seq) + ",";
+    json += "\"hops\":" + String(nodes[nodeId].hops) + ",";
+    json += "\"temp\":\"" + esc(nodes[nodeId].temp) + "\",";
+    json += "\"humid\":\"" + esc(nodes[nodeId].humid) + "\",";
+    json += "\"smoke\":\"" + esc(nodes[nodeId].smoke) + "\",";
+    json += "\"fire\":\"" + esc(nodes[nodeId].fire) + "\",";
+    json += "\"lat\":\"" + esc(nodes[nodeId].lat) + "\",";
+    json += "\"lng\":\"" + esc(nodes[nodeId].lng) + "\",";
+    json += "\"health\":\"" + esc(nodes[nodeId].health) + "\",";
+    json += "\"path\":\"" + esc(nodes[nodeId].path) + "\",";
+    json += "\"category\":\"" + esc(nodes[nodeId].category) + "\",";
+    json += "\"rssi\":" + String(nodes[nodeId].rssi) + ",";
+    json += "\"last_seen_sec\":" + String(ageSec) + ",";
+    json += "\"passkey\":\"" + esc(nodes[nodeId].passkey) + "\",";
+    json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+    json += "}";
 
-  http.begin(client, url);
-  http.addHeader("Content-Type", "application/json");
-  int httpCode = http.PUT(json);
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.PUT(json);
 
-  if (httpCode > 0) {
-    Serial.print("Firebase node" + String(nodeId) + " push: ");
-    Serial.println(httpCode);
+    if (httpCode > 0) {
+      Serial.print("Firebase node" + String(nodeId) + " push: ");
+      Serial.println(httpCode);
+    } else {
+      Serial.print("Firebase node" + String(nodeId) + " error: ");
+      Serial.println(http.errorToString(httpCode));
+    }
   } else {
-    Serial.print("Firebase node" + String(nodeId) + " error: ");
-    Serial.println(http.errorToString(httpCode));
+    // OFFLINE: PATCH only status fields — preserve last sensor data in Firebase
+    String json = "{";
+    json += "\"online\":false,";
+    json += "\"last_seen_sec\":" + String(ageSec);
+    json += "}";
+
+    http.begin(client, url);
+    http.addHeader("Content-Type", "application/json");
+    int httpCode = http.PATCH(json);
+
+    if (httpCode > 0) {
+      Serial.print("Firebase node" + String(nodeId) + " offline PATCH: ");
+      Serial.println(httpCode);
+    } else {
+      Serial.print("Firebase node" + String(nodeId) + " offline error: ");
+      Serial.println(http.errorToString(httpCode));
+    }
   }
 
   http.end();
@@ -770,7 +813,6 @@ void handleRoot() {
         <div class="mini"><div class="k">Normal</div><div class="v" id="normalCount">0</div></div>
         <div class="mini"><div class="k">Warning</div><div class="v" id="warningCount">0</div></div>
         <div class="mini"><div class="k">Fire</div><div class="v" id="fireCount">0</div></div>
-        <div class="mini"><div class="k">Refresh</div><div class="v">Every 3s</div></div>
       </div>
     </section>
     <section class="grid" id="nodeGrid"></section>
@@ -1072,8 +1114,28 @@ void loop() {
   nodes[originNode].humid = humStr;
   nodes[originNode].smoke = mq2Str;
   nodes[originNode].fire = fireStr;
-  nodes[originNode].lat = latStr;
-  nodes[originNode].lng = lngStr;
+
+  // ===== GPS PERSISTENCE =====
+  // Only update GPS if the new value is valid (not 0, not empty, not no-fix)
+  // This preserves the last known GPS for both local dashboard and Firebase
+  if (isValidGPS(latStr, lngStr)) {
+    nodes[originNode].lat = latStr;
+    nodes[originNode].lng = lngStr;
+    savedLat[originNode] = latStr;
+    savedLng[originNode] = lngStr;
+    Serial.println("GPS: Updated node" + String(originNode) + " → " + latStr + "," + lngStr);
+  } else {
+    // Use saved GPS if available, otherwise keep whatever was there
+    if (savedLat[originNode].length() > 0) {
+      nodes[originNode].lat = savedLat[originNode];
+      nodes[originNode].lng = savedLng[originNode];
+      Serial.println("GPS: Kept saved for node" + String(originNode) + " (incoming was no-fix/zero)");
+    } else {
+      nodes[originNode].lat = latStr;
+      nodes[originNode].lng = lngStr;
+    }
+  }
+
   nodes[originNode].health = healthStr;
   nodes[originNode].path = pathStr;
   nodes[originNode].category = finalCategory;

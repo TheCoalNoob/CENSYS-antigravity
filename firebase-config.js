@@ -28,6 +28,25 @@ const database = firebase.database();
 // =====================================================
 const NODE_OFFLINE_TIMEOUT_MS = 120000;  // 2 minutes
 
+// =====================================================
+// GPS PERSISTENCE CACHE
+// Stores the last known valid GPS for each node so the
+// website always shows a position even if the node sends
+// "No Fix" or 0.0 coordinates.
+// =====================================================
+const savedGPS = {};  // { nodeKey: { lat: '...', lng: '...' } }
+
+function isValidGPSValue(val) {
+  if (!val || val === '') return false;
+  const s = String(val).trim();
+  if (s === '0' || s === '0.0' || s === '0.00' || s === '0.000000') return false;
+  if (s === '-' || s === '--') return false;
+  if (s.toLowerCase().indexOf('no fix') >= 0) return false;
+  const num = parseFloat(s);
+  if (isNaN(num) || num === 0) return false;
+  return true;
+}
+
 function listenToNodes(callback) {
   const ref = database.ref('nodes');
   ref.on('value', (snapshot) => {
@@ -35,21 +54,48 @@ function listenToNodes(callback) {
     const now = Date.now();
 
     // Override online status based on timestamp freshness
+    // Sensor data values are PRESERVED — they remain from the last push
     Object.keys(data).forEach(key => {
       const node = data[key];
-      if (node && node.timestamp) {
+      if (!node) return;
+
+      // Check if all sensor data is blank/empty — treat as offline
+      const hasData = (node.temp && node.temp !== '') ||
+                      (node.humid && node.humid !== '') ||
+                      (node.smoke && node.smoke !== '') ||
+                      (node.fire && node.fire !== '');
+
+      if (node.timestamp) {
         const age = now - node.timestamp;
-        if (age > NODE_OFFLINE_TIMEOUT_MS) {
+        node.last_seen_sec = Math.round(age / 1000);
+
+        if (age > NODE_OFFLINE_TIMEOUT_MS || !hasData) {
+          // Offline: timed out OR no sensor data
+          // Keep all existing data fields intact (temp, humid, etc.)
           node.online = false;
-          node.last_seen_sec = Math.round(age / 1000);
         } else {
           node.online = true;
-          node.last_seen_sec = Math.round(age / 1000);
         }
       } else {
         // No timestamp = never seen = offline
         node.online = false;
       }
+
+      // ===== GPS PERSISTENCE =====
+      // If incoming GPS is valid, save it to cache
+      // If invalid, substitute the cached value so the map keeps the last known position
+      const hasValidLat = isValidGPSValue(node.lat);
+      const hasValidLng = isValidGPSValue(node.lng);
+
+      if (hasValidLat && hasValidLng) {
+        // Good GPS — save to cache
+        savedGPS[key] = { lat: node.lat, lng: node.lng };
+      } else if (savedGPS[key]) {
+        // Bad GPS — use cached value
+        node.lat = savedGPS[key].lat;
+        node.lng = savedGPS[key].lng;
+      }
+      // If no cache exists and no valid GPS, leave as-is (0 or empty)
     });
 
     callback(data);
