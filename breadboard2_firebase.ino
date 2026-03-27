@@ -595,7 +595,7 @@ void pushNodeToFirebase(int nodeId) {
     String json = "{";
     json += "\"online\":true,";
     json += "\"node\":" + String(nodeId) + ",";
-    json += "\"barangay\":\"" + NODE_BARANGAY[nodeId] + "\",";
+    json += "\"barangay\":\"" + brgy + "\",";
     json += "\"last_sender\":" + String(nodes[nodeId].lastSender) + ",";
     json += "\"seq\":" + String(nodes[nodeId].seq) + ",";
     json += "\"hops\":" + String(nodes[nodeId].hops) + ",";
