@@ -51,7 +51,7 @@ bool firebaseUnregDirty = false;
 // =====================================================
 // BEACON TIMING
 // =====================================================
-const unsigned long BEACON_INTERVAL_MS = 15000;  // Broadcast beacon every 15 seconds (avoid TDMA slot interference)
+const unsigned long BEACON_INTERVAL_MS = 8000;  // Broadcast beacon every 8 seconds (faster discovery)
 unsigned long lastBeaconSent = 0;
 
 WebServer server(80);
@@ -124,7 +124,7 @@ bool isValidGPS(String lat, String lng) {
   return true;
 }
 
-const unsigned long NODE_TIMEOUT_MS = 30000;  // 30 seconds (matches TDMA cycle 12s * 2.5)
+const unsigned long NODE_TIMEOUT_MS = 60000;  // 60 seconds — increased for more tolerance
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -428,7 +428,7 @@ bool isNoisePacket(String rx, String tempStr, String humStr, String smokeStr, St
   }
 
   // Validate fire sensor
-  if (fireStr != "Flame" && fireStr != "None" && fireStr != "Needs replacement") {
+  if (fireStr != "Flame" && fireStr != "None" && fireStr != "Needs replacement" && fireStr != "Warning-Flame") {
     Serial.println("NOISE: Invalid fire value: " + fireStr);
     return true;
   }
@@ -457,7 +457,8 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
   float temp = tempStr.toFloat();
   float hum  = humStr.toFloat();
   int smoke  = smokeStr.toInt();
-  bool flame = (fireStr == "Flame");
+  bool flame = (fireStr == "Flame");  // Only corroborated flame counts
+  bool warningFlame = (fireStr == "Warning-Flame");  // Uncorroborated = warning only
 
   int fireVotes = 0;
   int warningVotes = 0;
@@ -475,6 +476,8 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
   if (!isReplacementValue(fireStr) && flame) {
     fireVotes++;
   }
+
+  if (warningFlame) warningVotes++;  // Uncorroborated flame = warning vote
 
   if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
     if (temp >= 39.0 && hum <= 25.0) warningVotes++;
@@ -517,7 +520,7 @@ void pushNodeToFirebase(int nodeId) {
   WiFiClientSecure client;
   client.setInsecure();
 
-  String url = String(FIREBASE_HOST) + "/nodes/node" + String(nodeId) + ".json?auth=" + String(FIREBASE_AUTH);
+  String url = String(FIREBASE_HOST) + "/barangays/" + NODE_BARANGAY[nodeId] + "/node" + String(nodeId) + ".json?auth=" + String(FIREBASE_AUTH);
 
   unsigned long ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
   bool online = isNodeOnline(nodeId);
@@ -904,16 +907,17 @@ void setup() {
     }
   }
 
-  // ===== LORA SETTINGS — SF10 matches nodes =====
-  LoRa.setSpreadingFactor(10);
+  // ===== LORA SETTINGS — SF7 for less collision, better sync =====
+  LoRa.setSpreadingFactor(7);
   LoRa.setSignalBandwidth(125E3);
   LoRa.setCodingRate4(8);                          // 4/8 = maximum error correction
   LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
-  LoRa.setPreambleLength(8);
+  LoRa.setPreambleLength(12);
+  LoRa.setSyncWord(0x34);
   LoRa.enableCrc();
   LoRa.setGain(0);
 
-  Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm, CRC ON");
+  Serial.println("LoRa: SF7, BW125k, CR4/8, TX20dBm, Preamble12, Sync0x34");
 
   // Put LoRa in continuous receive mode
   LoRa.receive();

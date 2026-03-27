@@ -173,9 +173,18 @@ void addSeen(String sig) {
   seenIndex = (seenIndex + 1) % SEEN_MAX;
 }
 
-String fireStatus(int flameDigital) {
+String fireStatus(int flameDigital, float temp, int smoke) {
   if (flameDigital != LOW && flameDigital != HIGH) return "Needs replacement";
-  return (flameDigital == LOW) ? "Flame" : "None";
+  if (flameDigital == LOW) {
+    // Flame sensor triggered — require corroboration to prevent sunlight false positives
+    // Need temp >= 45°C OR smoke >= 450 to confirm actual fire
+    if (temp >= 45.0 || smoke >= 450) {
+      return "Flame";  // Corroborated — real fire
+    } else {
+      return "Warning-Flame";  // Uncorroborated — likely sunlight/IR noise
+    }
+  }
+  return "None";
 }
 
 bool isDHTBad(float temp, float hum) {
@@ -236,7 +245,8 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
   float temp = tempStr.toFloat();
   float hum  = humStr.toFloat();
   int smoke  = smokeStr.toInt();
-  bool flame = (fireStr == "Flame");
+  bool flame = (fireStr == "Flame");  // Only corroborated flame counts as fire vote
+  bool warningFlame = (fireStr == "Warning-Flame");  // Uncorroborated = warning only
   int fireVotes = 0, warningVotes = 0;
 
   if (!isReplacementValue(tempStr)) {
@@ -246,6 +256,7 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
     if (smoke >= 850) fireVotes++; else if (smoke >= 450) warningVotes++;
   }
   if (!isReplacementValue(fireStr) && flame) fireVotes++;
+  if (warningFlame) warningVotes++;  // Uncorroborated flame = warning vote
   if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
     if (temp >= 39.0 && hum <= 25.0) warningVotes++;
     if (temp >= 45.0 && hum <= 20.0) warningVotes++;
@@ -276,15 +287,15 @@ void updateLED() {
   int flame  = digitalRead(FLAME_PIN);
   bool maintenance = needsMaintenance(temp, hum, mq2, flame);
 
-  // Network is OK if WiFi is connected, OR if we successfully sent data within 30s
-  bool networkOk = wifiConnected || ((millis() - lastSuccessfulSendTime) < 30000);
+  // Network is OK if WiFi is connected, OR if we successfully sent data within 60s
+  bool networkOk = wifiConnected || ((millis() - lastSuccessfulSendTime) < 60000);
 
   // 1. SOLID = Connected & healthy (WiFi or LoRa)
   if (networkOk && !maintenance) {
     digitalWrite(LED_PIN, HIGH);
     ledState = true;
   }
-  // 2. MEDIUM BLINK = Searching for LoRa (only after 30s of no successful send)
+  // 2. MEDIUM BLINK = Searching for LoRa (only after 60s of no successful send)
   else if (!networkOk) {
     if (millis() - lastLedBlink >= 400) {
       lastLedBlink = millis();
@@ -387,17 +398,14 @@ void pushOtherNodeToFirebase(int originNode, String passkey,
 
   String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
 
+  // Use this node's barangay for the relay target path
+  String brgy = NODE_BARANGAY;
+
   HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
 
-  String url = String(FIREBASE_HOST) + "/nodes/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
-
-  // Determine barangay from node assignment (same mapping as gateway)
-  String brgy = NODE_BARANGAY;  // Default — will be overridden if we know the mapping
-  // Use a simple lookup since we know the 4 nodes
-  // In production, this could be a config array
-  // For now, use the same barangay — the gateway has the canonical mapping
+  String url = String(FIREBASE_HOST) + "/barangays/" + brgy + "/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
 
   String json = "{";
   json += "\"online\":true,";
@@ -619,7 +627,7 @@ void pushToFirebaseViaWiFi(String tempStr, String humStr, String mq2Str,
   WiFiClientSecure client;
   client.setInsecure();
 
-  String url = String(FIREBASE_HOST) + "/nodes/node" + String(NODE_ID) + ".json?auth=" + String(FIREBASE_AUTH);
+  String url = String(FIREBASE_HOST) + "/barangays/" + NODE_BARANGAY + "/node" + String(NODE_ID) + ".json?auth=" + String(FIREBASE_AUTH);
 
   String json = "{";
   json += "\"online\":true,";
@@ -693,16 +701,17 @@ void setup() {
       while (1) { digitalWrite(LED_PIN, !digitalRead(LED_PIN)); delay(120); }
     }
   } else {
-    LoRa.setSpreadingFactor(10);
+    LoRa.setSpreadingFactor(7);
     LoRa.setSignalBandwidth(125E3);
     LoRa.setCodingRate4(8);
     LoRa.setTxPower(20, PA_OUTPUT_PA_BOOST_PIN);
-    LoRa.setPreambleLength(8);
+    LoRa.setPreambleLength(12);
+    LoRa.setSyncWord(0x34);
     LoRa.enableCrc();
     LoRa.setGain(0);
     LoRa.receive();
     loraInitOk = true;
-    Serial.println("LoRa: SF10, BW125k, CR4/8, TX20dBm");
+    Serial.println("LoRa: SF7, BW125k, CR4/8, TX20dBm, Preamble12, Sync0x34");
   }
 
   randomSeed(analogRead(35) ^ (NODE_ID * 12345));
@@ -794,7 +803,7 @@ void loop() {
       String tempStr = isDHTBad(temp, hum) ? "Needs replacement" : String(temp, 1);
       String humStr  = isDHTBad(temp, hum) ? "Needs replacement" : String(hum, 1);
       String mq2Str  = isMQ2Bad(mq2Raw) ? "Needs replacement" : String(mq2Raw);
-      String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal);
+      String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal, temp, mq2Raw);
       String healthStr = sensorHealthText(temp, hum, mq2Raw, flameVal, gpsLive, gpsCached);
       String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
 
@@ -881,7 +890,7 @@ void loop() {
   String tempStr = isDHTBad(temp, hum) ? "Needs replacement" : String(temp, 1);
   String humStr  = isDHTBad(temp, hum) ? "Needs replacement" : String(hum, 1);
   String mq2Str  = isMQ2Bad(mq2Raw) ? "Needs replacement" : String(mq2Raw);
-  String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal);
+  String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal, temp, mq2Raw);
   String healthStr = sensorHealthText(temp, hum, mq2Raw, flameVal, gpsLive, gpsCached);
 
   String payload =

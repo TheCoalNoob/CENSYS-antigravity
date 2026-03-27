@@ -48,57 +48,60 @@ function isValidGPSValue(val) {
 }
 
 function listenToNodes(callback) {
-  const ref = database.ref('nodes');
+  const ref = database.ref('barangays');
   ref.on('value', (snapshot) => {
-    const data = snapshot.val() || {};
+    const barangaysData = snapshot.val() || {};
     const now = Date.now();
+    const mergedNodes = {};
 
-    // Override online status based on timestamp freshness
-    // Sensor data values are PRESERVED — they remain from the last push
-    Object.keys(data).forEach(key => {
-      const node = data[key];
-      if (!node) return;
+    // Iterate each barangay and merge nodes into a flat map
+    // Key format: {barangay}_node{id} to keep nodes from different barangays separate
+    Object.keys(barangaysData).forEach(brgyKey => {
+      const brgyNodes = barangaysData[brgyKey] || {};
+      Object.keys(brgyNodes).forEach(nodeKey => {
+        const node = brgyNodes[nodeKey];
+        if (!node) return;
 
-      // Check if all sensor data is blank/empty — treat as offline
-      const hasData = (node.temp && node.temp !== '') ||
-                      (node.humid && node.humid !== '') ||
-                      (node.smoke && node.smoke !== '') ||
-                      (node.fire && node.fire !== '');
+        // Set barangay from the path, not from the node's field
+        node.barangay = brgyKey;
 
-      if (node.timestamp) {
-        const age = now - node.timestamp;
-        node.last_seen_sec = Math.round(age / 1000);
+        const mergedKey = brgyKey + '_' + nodeKey;
 
-        if (age > NODE_OFFLINE_TIMEOUT_MS || !hasData) {
-          // Offline: timed out OR no sensor data
-          // Keep all existing data fields intact (temp, humid, etc.)
-          node.online = false;
+        // Check if all sensor data is blank/empty — treat as offline
+        const hasData = (node.temp && node.temp !== '') ||
+                        (node.humid && node.humid !== '') ||
+                        (node.smoke && node.smoke !== '') ||
+                        (node.fire && node.fire !== '');
+
+        if (node.timestamp) {
+          const age = now - node.timestamp;
+          node.last_seen_sec = Math.round(age / 1000);
+
+          if (age > NODE_OFFLINE_TIMEOUT_MS || !hasData) {
+            node.online = false;
+          } else {
+            node.online = true;
+          }
         } else {
-          node.online = true;
+          node.online = false;
         }
-      } else {
-        // No timestamp = never seen = offline
-        node.online = false;
-      }
 
-      // ===== GPS PERSISTENCE =====
-      // If incoming GPS is valid, save it to cache
-      // If invalid, substitute the cached value so the map keeps the last known position
-      const hasValidLat = isValidGPSValue(node.lat);
-      const hasValidLng = isValidGPSValue(node.lng);
+        // ===== GPS PERSISTENCE =====
+        const hasValidLat = isValidGPSValue(node.lat);
+        const hasValidLng = isValidGPSValue(node.lng);
 
-      if (hasValidLat && hasValidLng) {
-        // Good GPS — save to cache
-        savedGPS[key] = { lat: node.lat, lng: node.lng };
-      } else if (savedGPS[key]) {
-        // Bad GPS — use cached value
-        node.lat = savedGPS[key].lat;
-        node.lng = savedGPS[key].lng;
-      }
-      // If no cache exists and no valid GPS, leave as-is (0 or empty)
+        if (hasValidLat && hasValidLng) {
+          savedGPS[mergedKey] = { lat: node.lat, lng: node.lng };
+        } else if (savedGPS[mergedKey]) {
+          node.lat = savedGPS[mergedKey].lat;
+          node.lng = savedGPS[mergedKey].lng;
+        }
+
+        mergedNodes[mergedKey] = node;
+      });
     });
 
-    callback(data);
+    callback(mergedNodes);
   });
   return () => ref.off('value');
 }

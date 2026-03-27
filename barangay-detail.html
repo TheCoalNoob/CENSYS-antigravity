@@ -198,6 +198,7 @@
               <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
               <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
               <div class="legend__item"><span class="legend__dot" style="background:#dc2626;animation:fire-marker-pulse 1.2s infinite"></span> Fire (pulsing)</div>
+              <div class="legend__item"><span class="legend__dot" style="background:#c2410c;border-color:#7c2d12"></span> Offline (Possibly Caught Fire)</div>
             </div>
           </div>
           <div class="layout-split__side">
@@ -315,7 +316,11 @@
     let routeLayer = null; // Route polyline
 
     function getCategoryColor(cat, online) {
-      if (!online) return '#9ca3af';
+      if (!online) {
+        // Offline node that last reported Fire or Warning—possibly caught fire
+        if (cat === 'Fire' || cat === 'Warning') return '#c2410c';  // dark orange
+        return '#9ca3af';
+      }
       if (cat === 'Fire') return '#dc2626';
       if (cat === 'Warning') return '#d97706';
       return '#16a34a';
@@ -387,6 +392,20 @@
           const fireM = L.marker([lat, lng], { icon: createFireMarkerIcon() }).addTo(map);
           fireM.bindPopup(buildPopupContent(node), { maxWidth: 300 });
           fireMarkers[key] = fireM;
+        }
+
+        // Add distinct marker for offline nodes that last reported fire/warning
+        if (!node.online && (node.category === 'Fire' || node.category === 'Warning')) {
+          const offlineFireIcon = L.divIcon({
+            className: '',
+            html: '<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;background:rgba(194,65,12,0.3);border:2px solid #c2410c;border-radius:50%;" title="OFFLINE (POSSIBLY CAUGHT FIRE)">⚠️</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+          const offFireM = L.marker([lat, lng], { icon: offlineFireIcon }).addTo(map);
+          offFireM.bindPopup(buildPopupContent(node), { maxWidth: 300 });
+          offFireM.bindTooltip('OFFLINE (POSSIBLY CAUGHT FIRE)', { permanent: false, direction: 'top', offset: [0, -14], className: 'offline-fire-tooltip' });
+          fireMarkers['offfire_' + key] = offFireM;
         }
       });
     }
@@ -497,6 +516,11 @@
         const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
         const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
 
+        // Special badge for offline nodes whose last category was Fire/Warning
+        const offlineFireBadge = (!node.online && (node.category === 'Fire' || node.category === 'Warning'))
+          ? `<div style="margin-top:6px;padding:6px 10px;background:linear-gradient(135deg,#7c2d12,#c2410c);color:white;border-radius:8px;font-size:11px;font-weight:700;text-align:center">⚠️ OFFLINE (POSSIBLY CAUGHT FIRE)</div>`
+          : '';
+
         // Navigate button for fire nodes
         const navBtn = (node.online && node.category === 'Fire' && parseFloat(node.lat) !== 0)
           ? `<a href="https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}" target="_blank" class="navigate-btn" style="margin-top:8px">🚒 Navigate to Fire</a>`
@@ -549,6 +573,7 @@
                 <div class="node-card__value">${formatTimeAgo(node.last_seen_sec)}</div>
               </div>
             </div>
+            ${offlineFireBadge}
             ${navBtn}
           </div>
         `;
