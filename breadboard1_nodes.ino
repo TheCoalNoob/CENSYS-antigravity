@@ -762,7 +762,7 @@ void setup() {
 
   Serial.println("========================================");
   Serial.println("  CENSYS Node " + String(NODE_ID));
-  Serial.println("  Barangay: " + NODE_BARANGAY);
+  Serial.println("  Barangay: Auto-detect from GPS");
   Serial.println("========================================");
 
   // ===== STEP 1: TRY WIFI FIRST =====
