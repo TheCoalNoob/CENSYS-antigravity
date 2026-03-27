@@ -68,17 +68,66 @@ String NODE_KEYS[REGISTERED_NODES] = {
 };
 
 // =====================================================
-// NODE-TO-BARANGAY MAPPING
-// Change the barangay name for each node as needed.
-// Index 0 = unused, index 1..4 = node 1..4
+// BARANGAY BOUNDARY POLYGONS (for GPS auto-detection)
 // =====================================================
-String NODE_BARANGAY[5] = {
-  "",           // unused (index 0)
-  "kalunasan",  // Node 1
-  "kalunasan",  // Node 2
-  "kalunasan",  // Node 3
-  "kalunasan"   // Node 4
+const int KALUNASAN_PTS = 7;
+const float KALUNASAN_POLY[][2] = {
+  {10.3422, 123.8828}, {10.3392, 123.8763}, {10.3310, 123.8780},
+  {10.3246, 123.8835}, {10.3246, 123.8904}, {10.3310, 123.8935},
+  {10.3380, 123.8890}
 };
+const int SANNICOLAS_PTS = 5;
+const float SANNICOLAS_POLY[][2] = {
+  {10.2980, 123.8851}, {10.2961, 123.8917}, {10.2924, 123.8882},
+  {10.2934, 123.8864}, {10.2960, 123.8840}
+};
+const int KALUBIHAN_PTS = 5;
+const float KALUBIHAN_POLY[][2] = {
+  {10.2999, 123.8955}, {10.2996, 123.8968}, {10.2977, 123.9004},
+  {10.2965, 123.8980}, {10.2980, 123.8950}
+};
+const float BRGY_CENTERS[][2] = {
+  {10.3290849, 123.8869029},
+  {10.295138, 123.8907164},
+  {10.2991276, 123.8956305}
+};
+const char* BRGY_NAMES[] = {"kalunasan", "sannicolas", "kalubihan"};
+
+bool pointInPoly(float lat, float lng, const float poly[][2], int nPts) {
+  bool inside = false;
+  for (int i = 0, j = nPts - 1; i < nPts; j = i++) {
+    float yi = poly[i][0], xi = poly[i][1];
+    float yj = poly[j][0], xj = poly[j][1];
+    if (((yi > lat) != (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+float gpsDist(float lat1, float lng1, float lat2, float lng2) {
+  float dLat = (lat2 - lat1) * 0.0174533;
+  float dLng = (lng2 - lng1) * 0.0174533;
+  float a = sin(dLat/2)*sin(dLat/2) + cos(lat1*0.0174533)*cos(lat2*0.0174533)*sin(dLng/2)*sin(dLng/2);
+  return 6371000.0 * 2.0 * atan2(sqrt(a), sqrt(1-a));
+}
+
+String getBarangayFromCoords(float lat, float lng) {
+  if (lat == 0.0 || lng == 0.0) return "";
+  if (pointInPoly(lat, lng, KALUNASAN_POLY, KALUNASAN_PTS)) return "kalunasan";
+  if (pointInPoly(lat, lng, SANNICOLAS_POLY, SANNICOLAS_PTS)) return "sannicolas";
+  if (pointInPoly(lat, lng, KALUBIHAN_POLY, KALUBIHAN_PTS)) return "kalubihan";
+  float minDist = 999999;
+  int nearest = -1;
+  for (int i = 0; i < 3; i++) {
+    float d = gpsDist(lat, lng, BRGY_CENTERS[i][0], BRGY_CENTERS[i][1]);
+    if (d < minDist) { minDist = d; nearest = i; }
+  }
+  if (nearest >= 0 && minDist < 800) return String(BRGY_NAMES[nearest]);
+  return "";
+}
+
+// Per-node cached barangay (persists when GPS is lost)
+String cachedNodeBarangay[5] = {"", "", "", "", ""};
 
 // =====================================================
 // NODE DATA STRUCTURE
@@ -520,7 +569,23 @@ void pushNodeToFirebase(int nodeId) {
   WiFiClientSecure client;
   client.setInsecure();
 
-  String url = String(FIREBASE_HOST) + "/barangays/" + NODE_BARANGAY[nodeId] + "/node" + String(nodeId) + ".json?auth=" + String(FIREBASE_AUTH);
+  // Determine barangay from cached GPS
+  String brgy = cachedNodeBarangay[nodeId];
+  if (brgy.length() == 0) {
+    // Try to detect from saved GPS
+    float lat = savedLat[nodeId].toFloat();
+    float lng = savedLng[nodeId].toFloat();
+    brgy = getBarangayFromCoords(lat, lng);
+    if (brgy.length() > 0) cachedNodeBarangay[nodeId] = brgy;
+  }
+
+  String basePath;
+  if (brgy.length() == 0) {
+    basePath = "/unregistered_nodes/node" + String(nodeId);
+  } else {
+    basePath = "/barangays/" + brgy + "/node" + String(nodeId);
+  }
+  String url = String(FIREBASE_HOST) + basePath + ".json?auth=" + String(FIREBASE_AUTH);
 
   unsigned long ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
   bool online = isNodeOnline(nodeId);

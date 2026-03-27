@@ -1,7 +1,5 @@
 // =====================================================
 // CENSYS Fire Monitoring — Firebase Configuration
-// Replace the placeholder values below with your
-// actual Firebase project credentials.
 // =====================================================
 
 const firebaseConfig = {
@@ -15,26 +13,18 @@ const firebaseConfig = {
   measurementId: "G-8JNZQ05473"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
 // =====================================================
-// Shared helper: listen to all nodes
-// IMPORTANT: Online status is determined by timestamp.
-// If a node hasn't sent data in 2 minutes, it's OFFLINE
-// regardless of the "online" field in Firebase.
-// This prevents "ghost online" nodes after power-off.
+// CONSTANTS
 // =====================================================
 const NODE_OFFLINE_TIMEOUT_MS = 120000;  // 2 minutes
 
 // =====================================================
 // GPS PERSISTENCE CACHE
-// Stores the last known valid GPS for each node so the
-// website always shows a position even if the node sends
-// "No Fix" or 0.0 coordinates.
 // =====================================================
-const savedGPS = {};  // { nodeKey: { lat: '...', lng: '...' } }
+const savedGPS = {};
 
 function isValidGPSValue(val) {
   if (!val || val === '') return false;
@@ -47,6 +37,101 @@ function isValidGPSValue(val) {
   return true;
 }
 
+// =====================================================
+// BARANGAY DATA — Boundary polygons traced from Google Maps
+// Used for: map overlays AND point-in-polygon detection
+// =====================================================
+const BARANGAY_DATA = {
+  kalunasan: {
+    name: 'Barangay Kalunasan',
+    center: [10.3290849, 123.8869029],
+    zoom: 15,
+    boundary: [
+      [10.3422, 123.8828],
+      [10.3392, 123.8763],
+      [10.3310, 123.8780],
+      [10.3246, 123.8835],
+      [10.3246, 123.8904],
+      [10.3310, 123.8935],
+      [10.3380, 123.8890]
+    ]
+  },
+  sannicolas: {
+    name: 'Barangay San Nicolas',
+    center: [10.295138, 123.8907164],
+    zoom: 17,
+    boundary: [
+      [10.2980, 123.8851],
+      [10.2961, 123.8917],
+      [10.2924, 123.8882],
+      [10.2934, 123.8864],
+      [10.2960, 123.8840]
+    ]
+  },
+  kalubihan: {
+    name: 'Barangay Kalubihan',
+    center: [10.2991276, 123.8956305],
+    zoom: 17,
+    boundary: [
+      [10.2999, 123.8955],
+      [10.2996, 123.8968],
+      [10.2977, 123.9004],
+      [10.2965, 123.8980],
+      [10.2980, 123.8950]
+    ]
+  }
+};
+
+// =====================================================
+// POINT-IN-POLYGON (Ray casting algorithm)
+// polygon = array of [lat, lng] pairs
+// =====================================================
+function pointInPolygon(lat, lng, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const yi = polygon[i][0], xi = polygon[i][1];
+    const yj = polygon[j][0], xj = polygon[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// =====================================================
+// GET BARANGAY FROM GPS COORDINATES
+// Checks all polygons, falls back to nearest center
+// =====================================================
+function getBarangayFromGPS(lat, lng) {
+  lat = parseFloat(lat);
+  lng = parseFloat(lng);
+  if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return null;
+
+  // Check polygons first
+  for (const [key, brgy] of Object.entries(BARANGAY_DATA)) {
+    if (pointInPolygon(lat, lng, brgy.boundary)) {
+      return key;
+    }
+  }
+
+  // Fallback: nearest center (handles GPS jitter at edges)
+  let nearest = null;
+  let minDist = Infinity;
+  for (const [key, brgy] of Object.entries(BARANGAY_DATA)) {
+    const d = haversineDistance(lat, lng, brgy.center[0], brgy.center[1]);
+    if (d < minDist) {
+      minDist = d;
+      nearest = key;
+    }
+  }
+  // Only assign if within 800m of center (reasonable barangay radius)
+  if (minDist < 800) return nearest;
+  return null;
+}
+
+// =====================================================
+// FIREBASE LISTENER — reads from /barangays/ paths
+// =====================================================
 function listenToNodes(callback) {
   const ref = database.ref('barangays');
   ref.on('value', (snapshot) => {
@@ -54,20 +139,15 @@ function listenToNodes(callback) {
     const now = Date.now();
     const mergedNodes = {};
 
-    // Iterate each barangay and merge nodes into a flat map
-    // Key format: {barangay}_node{id} to keep nodes from different barangays separate
     Object.keys(barangaysData).forEach(brgyKey => {
       const brgyNodes = barangaysData[brgyKey] || {};
       Object.keys(brgyNodes).forEach(nodeKey => {
         const node = brgyNodes[nodeKey];
         if (!node) return;
 
-        // Set barangay from the path, not from the node's field
         node.barangay = brgyKey;
-
         const mergedKey = brgyKey + '_' + nodeKey;
 
-        // Check if all sensor data is blank/empty — treat as offline
         const hasData = (node.temp && node.temp !== '') ||
                         (node.humid && node.humid !== '') ||
                         (node.smoke && node.smoke !== '') ||
@@ -76,20 +156,14 @@ function listenToNodes(callback) {
         if (node.timestamp) {
           const age = now - node.timestamp;
           node.last_seen_sec = Math.round(age / 1000);
-
-          if (age > NODE_OFFLINE_TIMEOUT_MS || !hasData) {
-            node.online = false;
-          } else {
-            node.online = true;
-          }
+          node.online = (age <= NODE_OFFLINE_TIMEOUT_MS && hasData);
         } else {
           node.online = false;
         }
 
-        // ===== GPS PERSISTENCE =====
+        // GPS persistence
         const hasValidLat = isValidGPSValue(node.lat);
         const hasValidLng = isValidGPSValue(node.lng);
-
         if (hasValidLat && hasValidLng) {
           savedGPS[mergedKey] = { lat: node.lat, lng: node.lng };
         } else if (savedGPS[mergedKey]) {
@@ -106,23 +180,15 @@ function listenToNodes(callback) {
   return () => ref.off('value');
 }
 
-// Listen to gateway status
 function listenToGateway(callback) {
   const ref = database.ref('gateway');
-  ref.on('value', (snapshot) => {
-    const data = snapshot.val() || {};
-    callback(data);
-  });
+  ref.on('value', (snapshot) => callback(snapshot.val() || {}));
   return () => ref.off('value');
 }
 
-// Listen to unregistered nodes (nodes with unknown passkeys)
 function listenToUnregisteredNodes(callback) {
   const ref = database.ref('unregistered_nodes');
-  ref.on('value', (snapshot) => {
-    const data = snapshot.val() || {};
-    callback(data);
-  });
+  ref.on('value', (snapshot) => callback(snapshot.val() || {}));
   return () => ref.off('value');
 }
 
@@ -159,7 +225,7 @@ function requireAuth(requiredRole) {
 }
 
 // =====================================================
-// Fire Alarm Sound (Web Audio API — no file needed)
+// Fire Alarm Sound (Web Audio API)
 // =====================================================
 let alarmAudioCtx = null;
 let alarmOscillator = null;
@@ -169,21 +235,16 @@ let alarmSilenced = false;
 
 function startAlarmSound() {
   if (alarmPlaying) return;
-
   try {
     alarmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     alarmGain = alarmAudioCtx.createGain();
     alarmGain.gain.value = 0.3;
     alarmGain.connect(alarmAudioCtx.destination);
-
-    // Create alternating siren
     alarmOscillator = alarmAudioCtx.createOscillator();
     alarmOscillator.type = 'sawtooth';
     alarmOscillator.frequency.value = 800;
     alarmOscillator.connect(alarmGain);
     alarmOscillator.start();
-
-    // Siren sweep
     function sweep() {
       if (!alarmPlaying) return;
       const now = alarmAudioCtx.currentTime;
@@ -201,77 +262,49 @@ function startAlarmSound() {
 
 function stopAlarmSound() {
   alarmPlaying = false;
-  if (alarmOscillator) {
-    try { alarmOscillator.stop(); } catch(e) {}
-    alarmOscillator = null;
-  }
-  if (alarmAudioCtx) {
-    try { alarmAudioCtx.close(); } catch(e) {}
-    alarmAudioCtx = null;
-  }
+  if (alarmOscillator) { try { alarmOscillator.stop(); } catch(e) {} alarmOscillator = null; }
+  if (alarmAudioCtx) { try { alarmAudioCtx.close(); } catch(e) {} alarmAudioCtx = null; }
 }
 
-function silenceAlarm() {
-  alarmSilenced = true;
-  stopAlarmSound();
-}
-
-function resetAlarmSilence() {
-  alarmSilenced = false;
-}
+function silenceAlarm() { alarmSilenced = true; stopAlarmSound(); }
+function resetAlarmSilence() { alarmSilenced = false; }
 
 // =====================================================
-// Haversine Distance (meters) between two GPS coords
+// Haversine Distance (meters)
 // =====================================================
 function haversineDistance(lat1, lng1, lat2, lng2) {
-  const R = 6371000; // Earth radius in meters
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
             Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 // =====================================================
 // Fire Proximity Clustering
-// Groups fire nodes within radiusMeters into clusters.
-// Each cluster = 1 fire incident for BFP alarm levels.
 // =====================================================
 function clusterFires(nodesData, radiusMeters = 100) {
   const fireNodes = Object.values(nodesData).filter(n =>
     n.online && n.category === 'Fire' &&
     parseFloat(n.lat) !== 0 && parseFloat(n.lng) !== 0
   );
-
   if (fireNodes.length === 0) return { clusters: [], totalIncidents: 0, totalFireNodes: 0 };
 
-  // Union-Find for clustering
   const parent = fireNodes.map((_, i) => i);
-  function find(x) {
-    while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
-    return x;
-  }
-  function union(a, b) {
-    const ra = find(a), rb = find(b);
-    if (ra !== rb) parent[ra] = rb;
-  }
+  function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+  function union(a, b) { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; }
 
-  // Group nodes within radius
   for (let i = 0; i < fireNodes.length; i++) {
     for (let j = i + 1; j < fireNodes.length; j++) {
-      const dist = haversineDistance(
-        parseFloat(fireNodes[i].lat), parseFloat(fireNodes[i].lng),
-        parseFloat(fireNodes[j].lat), parseFloat(fireNodes[j].lng)
-      );
-      if (dist <= radiusMeters) {
+      if (haversineDistance(parseFloat(fireNodes[i].lat), parseFloat(fireNodes[i].lng),
+        parseFloat(fireNodes[j].lat), parseFloat(fireNodes[j].lng)) <= radiusMeters) {
         union(i, j);
       }
     }
   }
 
-  // Build clusters
   const clusterMap = {};
   fireNodes.forEach((node, i) => {
     const root = find(i);
@@ -280,26 +313,25 @@ function clusterFires(nodesData, radiusMeters = 100) {
   });
 
   const clusters = Object.values(clusterMap);
-  return {
-    clusters,
-    totalIncidents: clusters.length,
-    totalFireNodes: fireNodes.length
-  };
+  return { clusters, totalIncidents: clusters.length, totalFireNodes: fireNodes.length };
 }
 
 // =====================================================
-// BFP Fire Alarm Level Calculator (uses cluster count)
+// BFP Fire Alarm Levels (7 levels)
 // =====================================================
 function getBFPAlarmLevel(fireIncidentCount) {
   if (fireIncidentCount <= 0) return { level: 0, label: 'No Alarm', class: 'alarm-level--none' };
   if (fireIncidentCount === 1) return { level: 1, label: '1st Alarm', class: 'alarm-level--1' };
   if (fireIncidentCount <= 3) return { level: 2, label: '2nd Alarm', class: 'alarm-level--2' };
   if (fireIncidentCount <= 5) return { level: 3, label: '3rd Alarm', class: 'alarm-level--3' };
-  return { level: 4, label: 'General Alarm', class: 'alarm-level--general' };
+  if (fireIncidentCount <= 7) return { level: 4, label: '4th Alarm', class: 'alarm-level--4' };
+  if (fireIncidentCount <= 9) return { level: 5, label: '5th Alarm', class: 'alarm-level--5' };
+  if (fireIncidentCount <= 11) return { level: 6, label: 'Task Force Alpha', class: 'alarm-level--tfa' };
+  return { level: 7, label: 'Task Force Bravo', class: 'alarm-level--tfb' };
 }
 
 // =====================================================
-// Category badge helper
+// UI Helpers
 // =====================================================
 function categoryBadgeClass(cat) {
   if (cat === 'Fire') return 'badge--fire';
@@ -312,15 +344,12 @@ function statusBadgeClass(online) {
 }
 
 function safe(v) {
-  if (v === undefined || v === null || v === '') return '—';
+  if (v === undefined || v === null || v === '') return '\u2014';
   return String(v);
 }
 
-// =====================================================
-// Human-readable time ago
-// =====================================================
 function formatTimeAgo(seconds) {
-  if (seconds === undefined || seconds === null) return '—';
+  if (seconds === undefined || seconds === null) return '\u2014';
   if (seconds < 5) return 'just now';
   if (seconds < 60) return seconds + 's ago';
   if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
@@ -332,7 +361,7 @@ function formatTimeAgo(seconds) {
 // RSSI Signal Quality
 // =====================================================
 function getSignalQuality(rssi) {
-  if (rssi === undefined || rssi === null || rssi === 0) return { label: '—', class: 'sig-none', bars: 0 };
+  if (rssi === undefined || rssi === null || rssi === 0) return { label: '\u2014', class: 'sig-none', bars: 0 };
   if (rssi >= -70) return { label: 'Excellent', class: 'sig-great', bars: 4 };
   if (rssi >= -90) return { label: 'Good', class: 'sig-good', bars: 3 };
   if (rssi >= -110) return { label: 'Fair', class: 'sig-fair', bars: 2 };
@@ -341,7 +370,7 @@ function getSignalQuality(rssi) {
 
 function signalBarsHTML(rssi) {
   const sig = getSignalQuality(rssi);
-  if (sig.bars === 0) return '<span style="color:var(--text-muted)">—</span>';
+  if (sig.bars === 0) return '<span style="color:var(--text-muted)">\u2014</span>';
   let bars = '';
   for (let i = 1; i <= 4; i++) {
     const h = 4 + i * 4;
@@ -358,30 +387,8 @@ function startLiveClock(elementId) {
   function update() {
     const el = document.getElementById(elementId);
     if (!el) return;
-    const now = new Date();
-    el.textContent = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+    el.textContent = new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   }
   update();
   setInterval(update, 1000);
 }
-
-// =====================================================
-// Barangay metadata
-// =====================================================
-const BARANGAY_DATA = {
-  kalunasan: {
-    name: 'Barangay Kalunasan',
-    center: [10.3290849, 123.8869029],
-    zoom: 16
-  },
-  sannicolas: {
-    name: 'Barangay San Nicolas',
-    center: [10.295138, 123.8907164],
-    zoom: 17
-  },
-  kalubihan: {
-    name: 'Barangay Kalubihan',
-    center: [10.2991276, 123.8956305],
-    zoom: 17
-  }
-};

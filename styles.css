@@ -568,6 +568,33 @@ img { max-width: 100%; display: block; }
   border: 1px solid #991b1b;
 }
 
+.alarm-level--4 {
+  background: #450a0a;
+  color: #fecaca;
+  border: 1px solid #991b1b;
+}
+
+.alarm-level--5 {
+  background: #1c1917;
+  color: #fecaca;
+  border: 1px solid #7f1d1d;
+}
+
+.alarm-level--tfa {
+  background: linear-gradient(135deg, #1c1917, #450a0a);
+  color: #fecaca;
+  border: 1px solid #991b1b;
+  font-weight: 800;
+}
+
+.alarm-level--tfb {
+  background: linear-gradient(135deg, #0c0a09, #1c1917);
+  color: #fca5a5;
+  border: 2px solid #dc2626;
+  font-weight: 800;
+  animation: alarm-pulse 1s ease-in-out infinite;
+}
+
 /* =====================================================
    MAP CONTAINER
    ===================================================== */

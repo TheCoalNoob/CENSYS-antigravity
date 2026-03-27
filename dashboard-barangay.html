@@ -134,13 +134,13 @@
 <body>
   <!-- MOBILE INCOMPATIBILITY NOTICE -->
   <div class="mobile-block" id="mobileBlock">
-    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__icon" style="font-size:56px;font-weight:900;color:#94a3b8">CENSYS</div>
     <div class="mobile-block__title">Desktop View Required</div>
     <div class="mobile-block__text">
       The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
     </div>
     <div class="mobile-block__hint">
-      📱 Rotate to landscape or use a desktop browser
+      Rotate to landscape or use a desktop browser
     </div>
   </div>
 
@@ -162,7 +162,7 @@
       <div class="container">
         <!-- FIRE WARNING (no silence for barangay) -->
         <div class="fire-warning-banner hidden" id="fireWarning">
-          <div class="fire-warning-banner__title" id="fireWarningTitle">🔥 Fire Detected</div>
+          <div class="fire-warning-banner__title" id="fireWarningTitle">Fire Detected</div>
           <div class="fire-warning-banner__sub" id="fireWarningSub">Contact the fire station immediately.</div>
         </div>
 
@@ -202,7 +202,7 @@
         <!-- SPLIT LAYOUT: Map left, Node cards right -->
         <div class="layout-split">
           <div class="layout-split__main">
-            <div class="section-title"><span>🗺️</span> Node Locations</div>
+            <div class="section-title"><span>Node Locations</span></div>
             <div class="map-container" id="map"></div>
             <div class="legend">
               <div class="legend__item"><span class="legend__dot" style="background:#16a34a"></span> Normal</div>
@@ -213,7 +213,7 @@
             </div>
           </div>
           <div class="layout-split__side">
-            <div class="section-title"><span>📡</span> Sensor Nodes</div>
+            <div class="section-title"><span>Sensor Nodes</span></div>
             <div class="scroll-panel" id="nodeCards"></div>
           </div>
         </div>
@@ -278,14 +278,13 @@
       maxZoom: 19
     }).addTo(map);
 
-    L.circle(brgyInfo.center, {
-      radius: 400,
-      color: '#2563eb',
-      fillColor: '#2563eb',
-      fillOpacity: 0.06,
-      weight: 2,
-      dashArray: '8 4'
-    }).addTo(map);
+    // Draw barangay boundary polygon
+    if (brgyInfo.boundary) {
+      L.polygon(brgyInfo.boundary, {
+        color: '#2563eb', fillColor: '#2563eb',
+        fillOpacity: 0.06, weight: 2, dashArray: '8 4'
+      }).addTo(map);
+    }
 
     let markers = {};
 

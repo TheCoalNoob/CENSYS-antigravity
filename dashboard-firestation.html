@@ -298,13 +298,13 @@
 <body>
   <!-- MOBILE INCOMPATIBILITY NOTICE -->
   <div class="mobile-block" id="mobileBlock">
-    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__icon" style="font-size:56px;font-weight:900;color:#94a3b8">CENSYS</div>
     <div class="mobile-block__title">Desktop View Required</div>
     <div class="mobile-block__text">
       The CENSYS Fire Monitoring System is optimized for desktop and landscape displays. For the best experience, please access this dashboard on a computer or rotate your device to landscape mode.
     </div>
     <div class="mobile-block__hint">
-      📱 Rotate to landscape or use a desktop browser
+      Rotate to landscape or use a desktop browser
     </div>
   </div>
 
@@ -327,11 +327,11 @@
         <!-- FIRE ALARM BANNER -->
         <div class="alarm-banner alarm-hidden" id="alarmBanner">
           <div>
-            <div class="alarm-banner__text" id="alarmBannerText">🔥 FIRE DETECTED</div>
+            <div class="alarm-banner__text" id="alarmBannerText">FIRE DETECTED</div>
             <div class="alarm-banner__sub" id="alarmBannerSub">Fire alarm is active. Check the affected barangay immediately.</div>
           </div>
           <button class="btn btn--danger" id="silenceBtn" onclick="handleSilenceAlarm()">
-            🔇 Silence Alarm
+            Silence Alarm
           </button>
         </div>
 
@@ -365,22 +365,21 @@
           <div class="layout-split__main">
             <section class="alarm-section">
               <div class="section-title">
-                <span class="section-title__icon">🚨</span>
-                BFP Fire Alarm Status
+                <span class="section-title__icon" style="font-weight:900;color:var(--fire)">BFP</span>
+                Fire Alarm Status
               </div>
               <div class="alarm-level" id="alarmLevelBadge">
-                <span id="alarmLevelIcon">✅</span>
                 <span id="alarmLevelText">No Alarm — All Clear</span>
               </div>
               <div class="cluster-info" id="clusterInfo" style="display:none;"></div>
               <div class="silence-btn-area" id="silenceBtnArea" style="display:none;">
                 <button class="btn btn--danger btn--block" onclick="handleSilenceAlarm()">
-                  🔇 Silence Fire Alarm
+                  Silence Fire Alarm
                 </button>
               </div>
 
               <div class="alarm-protocol mt-12">
-                <div class="alarm-protocol__title">BFP Protocol Reference</div>
+                <div class="alarm-protocol__title">BFP Fire Alarm Levels</div>
                 <ul class="alarm-protocol__list" id="protocolList">
                   <li>
                     <span class="alarm-protocol__dot" style="background:var(--ok)"></span>
@@ -388,19 +387,31 @@
                   </li>
                   <li>
                     <span class="alarm-protocol__dot" style="background:var(--warn)"></span>
-                    <span><strong>1st Alarm</strong> — 1 fire incident</span>
+                    <span><strong>1st Alarm</strong> — 2-3 houses</span>
                   </li>
                   <li>
                     <span class="alarm-protocol__dot" style="background:#c2410c"></span>
-                    <span><strong>2nd Alarm</strong> — 2–3 fire incidents</span>
+                    <span><strong>2nd Alarm</strong> — 4-5 houses</span>
                   </li>
                   <li>
                     <span class="alarm-protocol__dot" style="background:var(--fire)"></span>
-                    <span><strong>3rd Alarm</strong> — 4–5 fire incidents</span>
+                    <span><strong>3rd Alarm</strong> — 6-7 houses or high-rise building</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:#991b1b"></span>
+                    <span><strong>4th Alarm</strong> — 8-9 houses or high-rise building</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:#7f1d1d"></span>
+                    <span><strong>5th Alarm</strong> — 10-11 houses or high-rise building</span>
                   </li>
                   <li>
                     <span class="alarm-protocol__dot" style="background:#450a0a"></span>
-                    <span><strong>General Alarm</strong> — 6+ incidents / full escalation</span>
+                    <span><strong>Task Force Alpha</strong> — 12&times;12 houses</span>
+                  </li>
+                  <li>
+                    <span class="alarm-protocol__dot" style="background:#1c1917"></span>
+                    <span><strong>Task Force Bravo</strong> — 15&times;15 houses</span>
                   </li>
                 </ul>
               </div>
@@ -410,14 +421,14 @@
             <section class="unreg-section">
               <div class="unreg-toggle" onclick="toggleUnregSection()">
                 <div class="unreg-toggle__left">
-                  <span>📡</span>
+                  <span style="font-weight:700;color:var(--text-muted)">UN</span>
                   <span class="unreg-toggle__title">Unregistered Nodes</span>
                   <span class="unreg-toggle__count" id="unregCount">(0 detected)</span>
                 </div>
-                <span class="unreg-toggle__arrow" id="unregArrow">▼</span>
+                <span class="unreg-toggle__arrow" id="unregArrow">&#9660;</span>
               </div>
               <div class="unreg-notice">
-                <span>⚠️</span>
+                <span style="font-weight:700;color:#92400e">NOTE:</span>
                 <span>Unregistered nodes are <strong>view-only</strong> — they do NOT trigger fire alarms.</span>
               </div>
               <div class="unreg-body" id="unregBody">
@@ -431,7 +442,7 @@
           <!-- RIGHT: Barangay Tiles -->
           <div class="layout-split__side">
             <div class="section-title">
-              <span class="section-title__icon">🗺️</span>
+              <span class="section-title__icon" style="font-weight:900">MAP</span>
               Monitored Barangays
             </div>
             <div id="brgyGrid" style="display:flex; flex-direction:column; gap:12px;">
@@ -512,9 +523,6 @@
       const alarm = getBFPAlarmLevel(fireIncidents);
       const levelBadge = document.getElementById('alarmLevelBadge');
       levelBadge.className = 'alarm-level ' + alarm.class;
-
-      const icons = ['✅', '⚠️', '🔥', '🔥🔥', '🚨'];
-      document.getElementById('alarmLevelIcon').textContent = icons[alarm.level] || '✅';
 
       if (alarm.level === 0) {
         document.getElementById('alarmLevelText').textContent = 'No Alarm — All Clear';

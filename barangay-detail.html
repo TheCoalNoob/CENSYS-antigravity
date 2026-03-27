@@ -141,12 +141,12 @@
 <body>
   <!-- MOBILE INCOMPATIBILITY NOTICE -->
   <div class="mobile-block" id="mobileBlock">
-    <div class="mobile-block__icon">🖥️</div>
+    <div class="mobile-block__icon" style="font-size:56px;font-weight:900;color:#94a3b8">CENSYS</div>
     <div class="mobile-block__title">Desktop View Required</div>
     <div class="mobile-block__text">
       The CENSYS Fire Monitoring System is optimized for desktop and landscape displays.
     </div>
-    <div class="mobile-block__hint">📱 Rotate to landscape or use a desktop browser</div>
+    <div class="mobile-block__hint">Rotate to landscape or use a desktop browser</div>
   </div>
 
   <div class="page-wrapper">
@@ -167,11 +167,11 @@
     <div class="container mt-8">
       <div class="alarm-banner alarm-hidden" id="alarmBanner">
         <div>
-          <div class="alarm-banner__text">🔥 FIRE DETECTED IN THIS AREA</div>
+          <div class="alarm-banner__text">FIRE DETECTED IN THIS AREA</div>
           <div class="alarm-banner__sub" id="alarmBannerSub">Immediate response required.</div>
         </div>
         <button class="btn btn--danger" id="silenceBtn" onclick="handleSilenceAlarm()">
-          🔇 Silence Alarm
+          Silence Alarm
         </button>
       </div>
     </div>
@@ -204,15 +204,15 @@
           <div class="layout-split__side">
             <!-- FIRE NAVIGATION PANEL (only shows when fire detected) -->
             <div class="fire-nav-panel hidden" id="fireNavPanel">
-              <div class="fire-nav-panel__title">🔥 Fire Response Navigation</div>
+              <div class="fire-nav-panel__title">Fire Response Navigation</div>
               <ul class="fire-nav-panel__list" id="fireNavList"></ul>
               <a id="navigateAllBtn" class="navigate-all-btn" href="#" target="_blank">
-                🚒 Navigate from Fire Station to Fire Location
+                Navigate from Fire Station to Fire Location
               </a>
               <div class="route-info" id="routeInfo"></div>
             </div>
 
-            <div class="section-title"><span>📡</span> Sensor Nodes</div>
+            <div class="section-title"><span>Sensor Nodes</span></div>
             <div class="scroll-panel" id="nodeCards"></div>
           </div>
         </div>
@@ -274,7 +274,7 @@
     function handleLogout() { clearSession(); window.location.href = 'index.html'; }
     function handleSilenceAlarm() {
       silenceAlarm();
-      document.getElementById('silenceBtn').textContent = '🔇 Alarm Silenced';
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
       document.getElementById('silenceBtn').disabled = true;
     }
 
@@ -295,15 +295,18 @@
       attribution: '© OpenStreetMap', maxZoom: 19
     }).addTo(map);
 
-    L.circle(brgyInfo.center, {
-      radius: 400, color: '#2563eb', fillColor: '#2563eb',
-      fillOpacity: 0.06, weight: 2, dashArray: '8 4'
-    }).addTo(map);
+    // Draw barangay boundary polygon
+    if (brgyInfo.boundary) {
+      L.polygon(brgyInfo.boundary, {
+        color: '#2563eb', fillColor: '#2563eb',
+        fillOpacity: 0.06, weight: 2, dashArray: '8 4'
+      }).addTo(map);
+    }
 
     // Fire station marker (always visible)
     const fireStationIcon = L.divIcon({
       className: '',
-      html: '<div style="background:#1d4ed8;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:12px">🚒</div>',
+      html: '<div style="background:#1d4ed8;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:white">FS</div>',
       iconSize: [24, 24],
       iconAnchor: [12, 12]
     });
