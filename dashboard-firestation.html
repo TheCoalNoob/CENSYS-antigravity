@@ -293,6 +293,149 @@
       font-size: 12px;
       color: #92400e;
     }
+
+    /* ===== FIRE OUT MODAL ===== */
+    .fire-out-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .fire-out-overlay.active {
+      display: flex;
+    }
+    .fire-out-modal {
+      background: white;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 32px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      animation: modal-in 0.3s ease;
+    }
+    @keyframes modal-in {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .fire-out-modal__icon {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #fef2f2, #fee2e2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 28px;
+    }
+    .fire-out-modal__title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .fire-out-modal__brgy {
+      font-size: 14px;
+      color: var(--fire);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .fire-out-modal__desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .fire-out-modal__actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .fire-out-btn {
+      padding: 12px 28px;
+      border-radius: var(--radius-full);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+    .fire-out-btn--yes {
+      background: linear-gradient(135deg, #16a34a, #15803d);
+      color: white;
+    }
+    .fire-out-btn--yes:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(22,163,74,0.3);
+    }
+    .fire-out-btn--no {
+      background: white;
+      color: var(--text-secondary);
+      border-color: var(--border);
+    }
+    .fire-out-btn--no:hover {
+      border-color: var(--text-muted);
+      background: var(--surface-active);
+    }
+
+    /* ===== FIRE INCIDENT LOG ===== */
+    .incident-log {
+      margin-top: 16px;
+    }
+    .incident-log__table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .incident-log__table thead {
+      background: var(--surface-active);
+    }
+    .incident-log__table th {
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      border-bottom: 2px solid var(--border);
+    }
+    .incident-log__table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-light);
+      vertical-align: middle;
+    }
+    .incident-log__table tr:hover td {
+      background: var(--surface-active);
+    }
+    .incident-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .incident-status--active {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .incident-status--cleared {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    .incident-log__empty {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -437,6 +580,17 @@
                 </div>
               </div>
             </section>
+
+            <!-- FIRE INCIDENT LOG -->
+            <section class="incident-log">
+              <div class="section-title">
+                <span class="section-title__icon" style="font-weight:900;color:var(--text-secondary)">LOG</span>
+                Fire Incident History
+              </div>
+              <div id="incidentLog">
+                <div class="incident-log__empty">No fire incidents recorded yet.</div>
+              </div>
+            </section>
           </div>
 
           <!-- RIGHT: Barangay Tiles -->
@@ -456,6 +610,22 @@
     <footer class="footer">
       CENSYS Technologies Inc. &copy; 2026 — San Nicolas Fire Substation, Cebu City
     </footer>
+  </div>
+
+  <!-- FIRE OUT CONFIRMATION MODAL -->
+  <div class="fire-out-overlay" id="fireOutOverlay">
+    <div class="fire-out-modal">
+      <div class="fire-out-modal__icon">&#128293;</div>
+      <div class="fire-out-modal__title">Is the Fire Out?</div>
+      <div class="fire-out-modal__brgy" id="fireOutBrgy"></div>
+      <div class="fire-out-modal__desc">
+        A fire alarm has been active. Confirm whether the fire has been extinguished. Once confirmed, all sensor nodes in this barangay will return to normal monitoring mode.
+      </div>
+      <div class="fire-out-modal__actions">
+        <button class="fire-out-btn fire-out-btn--yes" onclick="confirmFireOut()">Yes &mdash; Fire is Out</button>
+        <button class="fire-out-btn fire-out-btn--no" onclick="dismissFireOut()">No &mdash; Still Active</button>
+      </div>
+    </div>
   </div>
 
   <!-- Firebase SDK -->
@@ -486,6 +656,9 @@
     let prevFireCount = 0;
     let currentNodes = {};
     let unregSectionOpen = false;
+    let fireStatusData = {};
+    let pendingFireOutBrgy = null;  // Which barangay the fire-out modal is asking about
+    let fireOutShownFor = {};  // Track which barangays we've shown the modal for
 
     // =====================================================
     // TOGGLE UNREGISTERED SECTION
@@ -574,6 +747,24 @@
         resetAlarmSilence();
       }
       prevFireCount = fireIncidents;
+
+      // ===== FIRE OUT NOTIFICATION =====
+      // Show fire-out modal for barangays that have active fires
+      if (fireIncidents > 0) {
+        // Find barangays with fire
+        const brgyFires = {};
+        Object.values(nodesData).forEach(node => {
+          if (node.online && node.category === 'Fire' && node.barangay) {
+            brgyFires[node.barangay] = (brgyFires[node.barangay] || 0) + 1;
+          }
+        });
+        // For each barangay with fire, check if fire_cleared is already pending
+        Object.keys(brgyFires).forEach(brgy => {
+          if (!fireOutShownFor[brgy] && !(fireStatusData[brgy] && fireStatusData[brgy].fire_cleared)) {
+            // Don't auto-show modal — let the silence button area show the option
+          }
+        });
+      }
 
       // Highlight active protocol line
       const items = document.querySelectorAll('#protocolList li');
@@ -727,8 +918,91 @@
 
     function handleSilenceAlarm() {
       silenceAlarm();
-      document.getElementById('silenceBtn').textContent = '🔇 Alarm Silenced';
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
       document.getElementById('silenceBtn').disabled = true;
+      
+      // Show fire-out modal for the first barangay with active fire
+      const brgyFires = {};
+      Object.values(currentNodes).forEach(node => {
+        if (node.online && node.category === 'Fire' && node.barangay) {
+          brgyFires[node.barangay] = (brgyFires[node.barangay] || 0) + 1;
+        }
+      });
+      const activeBrgys = Object.keys(brgyFires);
+      if (activeBrgys.length > 0) {
+        showFireOutModal(activeBrgys[0]);
+      }
+    }
+
+    // =====================================================
+    // FIRE OUT MODAL
+    // =====================================================
+    function showFireOutModal(barangay) {
+      pendingFireOutBrgy = barangay;
+      const brgyName = BARANGAY_DATA[barangay] ? BARANGAY_DATA[barangay].name : barangay;
+      document.getElementById('fireOutBrgy').textContent = brgyName;
+      document.getElementById('fireOutOverlay').classList.add('active');
+      fireOutShownFor[barangay] = true;
+    }
+
+    function confirmFireOut() {
+      if (pendingFireOutBrgy) {
+        clearFireAlarm(pendingFireOutBrgy).then(() => {
+          console.log('Fire cleared for ' + pendingFireOutBrgy);
+          // Log the clearance
+          logFireIncident({
+            barangay: pendingFireOutBrgy,
+            action: 'fire_cleared',
+            cleared_by: sessionStorage.getItem('user') || 'operator',
+            status: 'cleared'
+          });
+        });
+      }
+      document.getElementById('fireOutOverlay').classList.remove('active');
+      pendingFireOutBrgy = null;
+    }
+
+    function dismissFireOut() {
+      document.getElementById('fireOutOverlay').classList.remove('active');
+      pendingFireOutBrgy = null;
+    }
+
+    // =====================================================
+    // FIRE INCIDENT LOG RENDERER
+    // =====================================================
+    function renderIncidentLog(incidents) {
+      const container = document.getElementById('incidentLog');
+      if (!incidents || incidents.length === 0) {
+        container.innerHTML = '<div class="incident-log__empty">No fire incidents recorded yet.</div>';
+        return;
+      }
+
+      let html = '<table class="incident-log__table">';
+      html += '<thead><tr>';
+      html += '<th>Time</th><th>Barangay</th><th>Node</th><th>Temp</th><th>Smoke</th><th>Status</th>';
+      html += '</tr></thead><tbody>';
+
+      incidents.forEach(inc => {
+        const time = inc.timestamp ? new Date(inc.timestamp).toLocaleString('en-PH', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
+        }) : '\u2014';
+
+        const brgyName = inc.barangay ? (BARANGAY_DATA[inc.barangay] ? BARANGAY_DATA[inc.barangay].name : inc.barangay) : '\u2014';
+        const statusClass = inc.status === 'cleared' ? 'incident-status--cleared' : 'incident-status--active';
+        const statusText = inc.status === 'cleared' ? 'Cleared' : (inc.action === 'fire_cleared' ? 'Cleared' : 'Active');
+
+        html += '<tr>';
+        html += `<td>${time}</td>`;
+        html += `<td>${brgyName}</td>`;
+        html += `<td>${inc.node !== undefined ? 'N' + inc.node : (inc.action === 'fire_cleared' ? 'All' : '\u2014')}</td>`;
+        html += `<td>${safe(inc.temp)}</td>`;
+        html += `<td>${safe(inc.smoke)}</td>`;
+        html += `<td><span class="incident-status ${statusClass}">${statusText}</span></td>`;
+        html += '</tr>';
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
     }
 
     // =====================================================
@@ -736,6 +1010,8 @@
     // =====================================================
     listenToNodes(renderDashboard);
     listenToUnregisteredNodes(renderUnregNodes);
+    listenToFireIncidents(renderIncidentLog);
+    listenToFireStatus((data) => { fireStatusData = data; });
   </script>
 </body>
 </html>

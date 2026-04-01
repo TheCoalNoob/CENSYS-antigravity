@@ -366,7 +366,11 @@
         const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
         const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
         const offlineFireBadge = (!node.online && (node.category === 'Fire' || node.category === 'Warning'))
-          ? `<div style="margin-top:6px;padding:6px 10px;background:linear-gradient(135deg,#7c2d12,#c2410c);color:white;border-radius:8px;font-size:11px;font-weight:700;text-align:center">⚠️ OFFLINE (POSSIBLY CAUGHT FIRE)</div>`
+          ? `<div style="margin-top:6px;padding:6px 10px;background:linear-gradient(135deg,#7c2d12,#c2410c);color:white;border-radius:8px;font-size:11px;font-weight:700;text-align:center">OFFLINE (POSSIBLY CAUGHT FIRE)</div>`
+          : '';
+
+        const fireLockBadge = node.fire_locked
+          ? `<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:0.5px;background:#fee2e2;color:#dc2626;margin-top:6px">FIRE LOCKED — Waiting for confirmation</div>`
           : '';
 
         return `
@@ -413,6 +417,7 @@
               </div>
             </div>
             ${offlineFireBadge}
+            ${fireLockBadge}
           </div>
         `;
       }).join('');

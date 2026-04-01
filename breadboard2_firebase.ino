@@ -49,6 +49,14 @@ bool firebaseDataDirty = false;
 bool firebaseUnregDirty = false;
 
 // =====================================================
+// WARM-UP: Don't push offline status for first 60s
+// This prevents overwriting Firebase data after reboot
+// =====================================================
+unsigned long bootTime = 0;
+const unsigned long WARMUP_PERIOD_MS = 60000;  // 60 seconds
+bool warmupComplete = false;
+
+// =====================================================
 // BEACON TIMING
 // =====================================================
 const unsigned long BEACON_INTERVAL_MS = 8000;  // Broadcast beacon every 8 seconds (faster discovery)
@@ -173,7 +181,17 @@ bool isValidGPS(String lat, String lng) {
   return true;
 }
 
-const unsigned long NODE_TIMEOUT_MS = 60000;  // 60 seconds — increased for more tolerance
+const unsigned long NODE_TIMEOUT_MS = 240000;  // 4 minutes — as required by instructor
+const unsigned long NODE_LONG_OFFLINE_MS = 14400000;  // 4 hours — clear barangay after this
+
+// =====================================================
+// FIRE LOCK — once Fire is detected, LOCK the node
+// at Fire until operator confirms fire is out
+// =====================================================
+bool fireLockedNodes[5] = {false, false, false, false, false};
+unsigned long fireLockedTime[5] = {0, 0, 0, 0, 0};
+unsigned long lastFireClearCheck = 0;
+const unsigned long FIRE_CLEAR_CHECK_INTERVAL = 10000;  // Check every 10s
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -305,6 +323,96 @@ bool isNodeOnline(int nodeId) {
   if (nodeId < 1 || nodeId > 4) return false;
   if (nodes[nodeId].lastSeenMillis == 0) return false;
   return (millis() - nodes[nodeId].lastSeenMillis) < NODE_TIMEOUT_MS;
+}
+
+bool isNodeLongOffline(int nodeId) {
+  if (nodeId < 1 || nodeId > 4) return false;
+  if (nodes[nodeId].lastSeenMillis == 0) return true;  // Never seen = long offline
+  return (millis() - nodes[nodeId].lastSeenMillis) >= NODE_LONG_OFFLINE_MS;
+}
+
+// =====================================================
+// CROSS-NODE BARANGAY PROPAGATION
+// If one node has a detected barangay, apply it to
+// other nodes that are online but have no barangay yet.
+// Assumes all 4 nodes are co-located during deployment.
+// =====================================================
+void propagateBarangay() {
+  String detectedBrgy = "";
+  // Find any node with a valid barangay
+  for (int i = 1; i <= 4; i++) {
+    if (isNodeOnline(i) && cachedNodeBarangay[i].length() > 0) {
+      detectedBrgy = cachedNodeBarangay[i];
+      break;
+    }
+  }
+  if (detectedBrgy.length() == 0) return;
+  
+  // Apply to all online nodes that don't have a barangay yet
+  for (int i = 1; i <= 4; i++) {
+    if (isNodeOnline(i) && cachedNodeBarangay[i].length() == 0) {
+      cachedNodeBarangay[i] = detectedBrgy;
+      Serial.println("PROPAGATE: Node" + String(i) + " assigned to " + detectedBrgy + " (from sibling node)");
+      // Move from unregistered to barangay in Firebase
+      firebaseDataDirty = true;
+    }
+  }
+}
+
+// =====================================================
+// CHECK FIRE_CLEARED FLAG IN FIREBASE
+// =====================================================
+void checkFireCleared() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (millis() - lastFireClearCheck < FIRE_CLEAR_CHECK_INTERVAL) return;
+  lastFireClearCheck = millis();
+  
+  // Check each barangay that has locked fire nodes
+  const char* brgys[] = {"kalunasan", "sannicolas", "kalubihan"};
+  for (int b = 0; b < 3; b++) {
+    bool hasLockedNode = false;
+    for (int i = 1; i <= 4; i++) {
+      if (fireLockedNodes[i] && cachedNodeBarangay[i] == String(brgys[b])) {
+        hasLockedNode = true;
+        break;
+      }
+    }
+    if (!hasLockedNode) continue;
+    
+    HTTPClient http;
+    WiFiClientSecure client;
+    client.setInsecure();
+    
+    String url = String(FIREBASE_HOST) + "/fire_status/" + String(brgys[b]) + "/fire_cleared.json?auth=" + String(FIREBASE_AUTH);
+    http.begin(client, url);
+    int httpCode = http.GET();
+    
+    if (httpCode == 200) {
+      String payload = http.getString();
+      payload.trim();
+      if (payload == "true") {
+        Serial.println("FIRE CLEARED: " + String(brgys[b]) + " — unlocking all nodes");
+        for (int i = 1; i <= 4; i++) {
+          if (cachedNodeBarangay[i] == String(brgys[b])) {
+            fireLockedNodes[i] = false;
+            fireLockedTime[i] = 0;
+          }
+        }
+        // Reset the flag in Firebase
+        HTTPClient http2;
+        WiFiClientSecure client2;
+        client2.setInsecure();
+        String resetUrl = String(FIREBASE_HOST) + "/fire_status/" + String(brgys[b]) + ".json?auth=" + String(FIREBASE_AUTH);
+        http2.begin(client2, resetUrl);
+        http2.addHeader("Content-Type", "application/json");
+        http2.PUT("{\"fire_cleared\":false,\"cleared_at\":{\"_sv\":\"timestamp\"}}");
+        http2.end();
+        
+        firebaseDataDirty = true;
+      }
+    }
+    http.end();
+  }
 }
 
 bool allNodesWorking() {
@@ -565,9 +673,21 @@ void pushNodeToFirebase(int nodeId) {
     return;
   }
 
+  // During warm-up, only push online nodes (don't overwrite Firebase with offline)
+  bool online = isNodeOnline(nodeId);
+  if (!warmupComplete && !online) {
+    return;
+  }
+
   HTTPClient http;
   WiFiClientSecure client;
   client.setInsecure();
+
+  // Check if node has been offline >4 hours — clear barangay
+  if (isNodeLongOffline(nodeId) && cachedNodeBarangay[nodeId].length() > 0) {
+    Serial.println("LONG OFFLINE: Node" + String(nodeId) + " >4hrs — clearing barangay " + cachedNodeBarangay[nodeId]);
+    cachedNodeBarangay[nodeId] = "";
+  }
 
   // Determine barangay from cached GPS
   String brgy = cachedNodeBarangay[nodeId];
@@ -588,7 +708,12 @@ void pushNodeToFirebase(int nodeId) {
   String url = String(FIREBASE_HOST) + basePath + ".json?auth=" + String(FIREBASE_AUTH);
 
   unsigned long ageSec = (millis() - nodes[nodeId].lastSeenMillis) / 1000;
-  bool online = isNodeOnline(nodeId);
+
+  // Fire lock status
+  String displayCategory = nodes[nodeId].category;
+  if (fireLockedNodes[nodeId]) {
+    displayCategory = "Fire";
+  }
 
   if (online) {
     // ONLINE: Full PUT with all sensor data + fresh timestamp
@@ -607,7 +732,8 @@ void pushNodeToFirebase(int nodeId) {
     json += "\"lng\":\"" + esc(nodes[nodeId].lng) + "\",";
     json += "\"health\":\"" + esc(nodes[nodeId].health) + "\",";
     json += "\"path\":\"" + esc(nodes[nodeId].path) + "\",";
-    json += "\"category\":\"" + esc(nodes[nodeId].category) + "\",";
+    json += "\"category\":\"" + esc(displayCategory) + "\",";
+    json += "\"fire_locked\":" + String(fireLockedNodes[nodeId] ? "true" : "false") + ",";
     json += "\"rssi\":" + String(nodes[nodeId].rssi) + ",";
     json += "\"last_seen_sec\":" + String(ageSec) + ",";
     json += "\"passkey\":\"" + esc(nodes[nodeId].passkey) + "\",";
@@ -749,6 +875,9 @@ void pushNextToFirebase() {
     // Push unregistered nodes
     pushUnregToFirebase();
     firebaseUnregDirty = false;
+  } else if (firebasePushIndex == 7) {
+    // Cross-node barangay propagation
+    propagateBarangay();
   } else {
     // Reset cycle
     firebasePushIndex = 0;
@@ -924,10 +1053,75 @@ void handleData() {
 // =====================================================
 // SETUP
 // =====================================================
+// =====================================================
+// READ EXISTING NODE DATA FROM FIREBASE ON STARTUP
+// This prevents overwriting Firebase with blank data
+// =====================================================
+void loadNodeDataFromFirebase() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Firebase restore: No WiFi — skipping");
+    return;
+  }
+  
+  const char* brgys[] = {"kalunasan", "sannicolas", "kalubihan"};
+  for (int b = 0; b < 3; b++) {
+    for (int n = 1; n <= 4; n++) {
+      HTTPClient http;
+      WiFiClientSecure client;
+      client.setInsecure();
+      
+      String url = String(FIREBASE_HOST) + "/barangays/" + String(brgys[b]) + "/node" + String(n) + ".json?auth=" + String(FIREBASE_AUTH);
+      http.begin(client, url);
+      int httpCode = http.GET();
+      
+      if (httpCode == 200) {
+        String payload = http.getString();
+        if (payload != "null" && payload.length() > 10) {
+          // Node exists in this barangay — restore its cached barangay
+          cachedNodeBarangay[n] = String(brgys[b]);
+          Serial.println("Firebase restore: Node" + String(n) + " found in " + String(brgys[b]));
+          
+          // Extract and restore GPS coordinates
+          int latIdx = payload.indexOf("\"lat\":\"");
+          int lngIdx = payload.indexOf("\"lng\":\"");
+          if (latIdx > 0 && lngIdx > 0) {
+            int latStart = latIdx + 7;
+            int latEnd = payload.indexOf("\"", latStart);
+            int lngStart = lngIdx + 7;
+            int lngEnd = payload.indexOf("\"", lngStart);
+            if (latEnd > latStart && lngEnd > lngStart) {
+              String lat = payload.substring(latStart, latEnd);
+              String lng = payload.substring(lngStart, lngEnd);
+              if (isValidGPS(lat, lng)) {
+                savedLat[n] = lat;
+                savedLng[n] = lng;
+                nodes[n].lat = lat;
+                nodes[n].lng = lng;
+                Serial.println("  GPS restored: " + lat + "," + lng);
+              }
+            }
+          }
+          
+          // Check if fire was locked
+          if (payload.indexOf("\"fire_locked\":true") > 0) {
+            fireLockedNodes[n] = true;
+            fireLockedTime[n] = millis();
+            Serial.println("  Fire lock restored for node" + String(n));
+          }
+        }
+      }
+      http.end();
+      delay(100);  // Don't flood Firebase
+    }
+  }
+  Serial.println("Firebase restore complete");
+}
+
 void setup() {
   Serial.begin(115200);
   delay(200);
 
+  bootTime = millis();
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
@@ -1027,6 +1221,10 @@ void setup() {
   Serial.println("Connect to WiFi: CENSYS-Gateway");
   Serial.println("Open browser: http://192.168.4.1");
 
+  // ===== RESTORE NODE DATA FROM FIREBASE =====
+  Serial.println("Restoring node data from Firebase...");
+  loadNodeDataFromFirebase();
+
   // Send first beacon immediately
   sendBeacon();
   lastBeaconSent = millis();
@@ -1039,12 +1237,21 @@ void loop() {
   server.handleClient();
   updateGatewayLED();
 
+  // ===== WARM-UP TRACKING =====
+  if (!warmupComplete && (millis() - bootTime >= WARMUP_PERIOD_MS)) {
+    warmupComplete = true;
+    Serial.println("WARM-UP COMPLETE — now pushing offline status");
+  }
+
   // ===== BEACON BROADCAST =====
   // Send a short beacon every BEACON_INTERVAL_MS so nodes can discover the gateway
   if (millis() - lastBeaconSent >= BEACON_INTERVAL_MS) {
     sendBeacon();
     lastBeaconSent = millis();
   }
+
+  // ===== CHECK FIRE_CLEARED FLAGS =====
+  checkFireCleared();
 
   // Firebase: push ONE item per cycle (non-blocking round-robin)
   // This is critical: pushing all 5+ items at once blocks LoRa for 5-10 seconds!
@@ -1173,6 +1380,53 @@ void loop() {
     }
   }
 
+  // ===== FIRE LOCK: Once Fire is confirmed, LOCK the node =====
+  if (finalCategory == "Fire" && !fireLockedNodes[originNode]) {
+    fireLockedNodes[originNode] = true;
+    fireLockedTime[originNode] = millis();
+    Serial.println("FIRE LOCKED: Node" + String(originNode) + " — will stay Fire until operator confirms fire is out");
+    
+    // Log fire incident to Firebase
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      WiFiClientSecure client;
+      client.setInsecure();
+      String brgy = cachedNodeBarangay[originNode];
+      if (brgy.length() == 0) brgy = "unknown";
+      String incidentUrl = String(FIREBASE_HOST) + "/fire_incidents.json?auth=" + String(FIREBASE_AUTH);
+      String json = "{";
+      json += "\"node\":" + String(originNode) + ",";
+      json += "\"barangay\":\"" + brgy + "\",";
+      json += "\"temp\":\"" + esc(tempStr) + "\",";
+      json += "\"smoke\":\"" + esc(mq2Str) + "\",";
+      json += "\"fire_sensor\":\"" + esc(fireStr) + "\",";
+      json += "\"lat\":\"" + esc(nodes[originNode].lat) + "\",";
+      json += "\"lng\":\"" + esc(nodes[originNode].lng) + "\",";
+      json += "\"status\":\"active\",";
+      json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+      json += "}";
+      http.begin(client, incidentUrl);
+      http.addHeader("Content-Type", "application/json");
+      http.POST(json);
+      http.end();
+      
+      // Set fire_status flag for the barangay
+      String statusUrl = String(FIREBASE_HOST) + "/fire_status/" + brgy + ".json?auth=" + String(FIREBASE_AUTH);
+      HTTPClient http2;
+      WiFiClientSecure client2;
+      client2.setInsecure();
+      http2.begin(client2, statusUrl);
+      http2.addHeader("Content-Type", "application/json");
+      http2.PUT("{\"fire_cleared\":false,\"active_since\":{\"_sv\":\"timestamp\"}}");
+      http2.end();
+    }
+  }
+  
+  // If fire-locked, override category to Fire regardless of current readings
+  if (fireLockedNodes[originNode]) {
+    finalCategory = "Fire";
+  }
+
   nodes[originNode].online = true;
   nodes[originNode].passkey = key;
   nodes[originNode].nodeId = originNode;
@@ -1193,6 +1447,27 @@ void loop() {
     savedLat[originNode] = latStr;
     savedLng[originNode] = lngStr;
     Serial.println("GPS: Updated node" + String(originNode) + " → " + latStr + "," + lngStr);
+    
+    // Auto-detect barangay from new GPS
+    String detectedBrgy = getBarangayFromCoords(latStr.toFloat(), lngStr.toFloat());
+    if (detectedBrgy.length() > 0 && cachedNodeBarangay[originNode] != detectedBrgy) {
+      if (cachedNodeBarangay[originNode].length() > 0) {
+        // Moving from one barangay to another — delete old entry
+        Serial.println("BARANGAY CHANGE: Node" + String(originNode) + " " + cachedNodeBarangay[originNode] + " → " + detectedBrgy);
+        // Delete from old barangay in Firebase
+        if (WiFi.status() == WL_CONNECTED) {
+          HTTPClient httpDel;
+          WiFiClientSecure clientDel;
+          clientDel.setInsecure();
+          String delUrl = String(FIREBASE_HOST) + "/barangays/" + cachedNodeBarangay[originNode] + "/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
+          httpDel.begin(clientDel, delUrl);
+          httpDel.sendRequest("DELETE");
+          httpDel.end();
+        }
+      }
+      cachedNodeBarangay[originNode] = detectedBrgy;
+      Serial.println("GPS AUTO-DETECT: Node" + String(originNode) + " → barangay " + detectedBrgy);
+    }
   } else {
     // Use saved GPS if available, otherwise keep whatever was there
     if (savedLat[originNode].length() > 0) {

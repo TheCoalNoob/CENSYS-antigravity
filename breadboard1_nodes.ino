@@ -75,8 +75,18 @@ String getBarangayFromCoords(float lat, float lng) {
   return "";
 }
 
-// Cached barangay (persists even when GPS is lost)
+// Cached barangay — CLEARED on boot to force GPS re-detection
+// This prevents updating the wrong barangay after relocation
 String cachedBarangay = "";
+
+// =====================================================
+// FIRE LOCK — once Fire is confirmed, LOCK the category
+// at Fire until operator confirms fire is out via website
+// =====================================================
+bool fireLocked = false;
+unsigned long fireLockedTime = 0;
+unsigned long lastFireClearCheck = 0;
+const unsigned long FIRE_CLEAR_CHECK_INTERVAL_MS = 15000;  // Check every 15s
 
 // =====================================================
 // WIFI CREDENTIALS
@@ -338,6 +348,59 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
 }
 
 // =====================================================
+// FIRE LOCK CATEGORY WRAPPER
+// Once Fire is detected, lock it until operator clears
+// =====================================================
+String getLockedCategory(String tempStr, String humStr, String mq2Str, String fireStr, String healthStr) {
+  String raw = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+  
+  // If we hit Fire for the first time, lock it
+  if (raw == "Fire" && !fireLocked) {
+    fireLocked = true;
+    fireLockedTime = millis();
+    Serial.println("FIRE LOCKED: Category locked at Fire until operator confirms fire is out");
+  }
+  
+  // If locked, always return Fire
+  if (fireLocked) return "Fire";
+  
+  return raw;
+}
+
+// =====================================================
+// CHECK FIRE_CLEARED (WiFi mode only)
+// Reads fire_cleared flag from Firebase to unlock
+// =====================================================
+void checkFireClearedWiFi() {
+  if (!wifiConnected || WiFi.status() != WL_CONNECTED) return;
+  if (!fireLocked) return;
+  if (millis() - lastFireClearCheck < FIRE_CLEAR_CHECK_INTERVAL_MS) return;
+  lastFireClearCheck = millis();
+  
+  String brgy = cachedBarangay;
+  if (brgy.length() == 0) return;
+  
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  String url = String(FIREBASE_HOST) + "/fire_status/" + brgy + "/fire_cleared.json?auth=" + String(FIREBASE_AUTH);
+  http.begin(client, url);
+  int httpCode = http.GET();
+  
+  if (httpCode == 200) {
+    String payload = http.getString();
+    payload.trim();
+    if (payload == "true") {
+      fireLocked = false;
+      fireLockedTime = 0;
+      Serial.println("FIRE CLEARED: Unlocked by operator via website");
+    }
+  }
+  http.end();
+}
+
+// =====================================================
 // LED STATUS
 //
 // SOLID         = Connected & healthy (WiFi or LoRa)
@@ -463,8 +526,17 @@ void pushOtherNodeToFirebase(int originNode, String passkey,
 
   String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
 
-  // Determine barangay from GPS coordinates (relay path)
-  String brgy = cachedBarangay;
+  // Determine barangay from ORIGIN NODE's GPS (not relay node's)
+  String brgy = "";
+  float originLat = latStr.toFloat();
+  float originLng = lngStr.toFloat();
+  if (originLat != 0.0 && originLng != 0.0) {
+    brgy = getBarangayFromCoords(originLat, originLng);
+  }
+  // Fallback: use this relay node's barangay if origin has no GPS
+  if (brgy.length() == 0 && cachedBarangay.length() > 0) {
+    brgy = cachedBarangay;
+  }
   if (brgy.length() == 0) brgy = "unregistered";
 
   HTTPClient http;
@@ -763,6 +835,7 @@ void setup() {
   Serial.println("========================================");
   Serial.println("  CENSYS Node " + String(NODE_ID));
   Serial.println("  Barangay: Auto-detect from GPS");
+  Serial.println("  (starts as UNREGISTERED until GPS fix)");
   Serial.println("========================================");
 
   // ===== STEP 1: TRY WIFI FIRST =====
@@ -864,6 +937,9 @@ void loop() {
   if (wifiConnected) {
     if (loraInitOk) processIncoming();  // Still help relay
 
+    // Check fire_cleared flag periodically
+    checkFireClearedWiFi();
+
     if (millis() - lastSendTime >= WIFI_SEND_INTERVAL_MS) {
       lastSendTime = millis();
       seqCounter++;
@@ -884,7 +960,7 @@ void loop() {
       String mq2Str  = isMQ2Bad(mq2Raw) ? "Needs replacement" : String(mq2Raw);
       String fireStr = isFlameBad(flameVal) ? "Needs replacement" : fireStatus(flameVal, temp, mq2Raw);
       String healthStr = sensorHealthText(temp, hum, mq2Raw, flameVal, gpsLive, gpsCached);
-      String category = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
+      String category = getLockedCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
 
       Serial.println("==== WiFi TX Seq:" + String(seqCounter) + " ====");
       Serial.println("T:" + tempStr + " H:" + humStr + " S:" + mq2Str + " F:" + fireStr + " Cat:" + category);

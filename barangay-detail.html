@@ -135,6 +135,52 @@
       0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.5); }
       50% { box-shadow: 0 0 20px 8px rgba(220,38,38,0.2); }
     }
+
+    /* ===== FIRE OUT MODAL ===== */
+    .fire-out-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .fire-out-overlay.active { display: flex; }
+    .fire-out-modal {
+      background: white;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 32px;
+      max-width: 480px;
+      width: 90%;
+      text-align: center;
+      animation: modal-in 0.3s ease;
+    }
+    @keyframes modal-in {
+      from { transform: scale(0.9); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .fire-out-modal__title { font-size: 20px; font-weight: 800; margin-bottom: 12px; }
+    .fire-out-modal__desc { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px; }
+    .fire-out-modal__actions { display: flex; gap: 12px; justify-content: center; }
+    .fire-out-btn {
+      padding: 12px 28px; border-radius: var(--radius-full);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      border: 2px solid transparent; transition: all 0.2s ease;
+    }
+    .fire-out-btn--yes { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
+    .fire-out-btn--yes:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(22,163,74,0.3); }
+    .fire-out-btn--no { background: white; color: var(--text-secondary); border-color: var(--border); }
+    .fire-out-btn--no:hover { border-color: var(--text-muted); background: var(--surface-active); }
+    .fire-lock-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: var(--radius-full);
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      background: #fee2e2; color: #dc2626;
+      margin-top: 6px;
+    }
   </style>
 </head>
 
@@ -224,6 +270,21 @@
     </footer>
   </div>
 
+  <!-- FIRE OUT MODAL (fire station users only) -->
+  <div class="fire-out-overlay" id="fireOutOverlay">
+    <div class="fire-out-modal">
+      <div style="font-size:40px;margin-bottom:12px">&#128293;</div>
+      <div class="fire-out-modal__title">Is the Fire Out?</div>
+      <div class="fire-out-modal__desc">
+        Confirm that the fire has been extinguished. All sensor nodes will return to normal monitoring.
+      </div>
+      <div class="fire-out-modal__actions">
+        <button class="fire-out-btn fire-out-btn--yes" onclick="confirmFireOut()">Yes &mdash; Fire is Out</button>
+        <button class="fire-out-btn fire-out-btn--no" onclick="dismissFireOut()">No &mdash; Still Active</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Firebase SDK -->
@@ -276,6 +337,27 @@
       silenceAlarm();
       document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
       document.getElementById('silenceBtn').disabled = true;
+      // Show fire-out modal for fire station users
+      if (role === 'firestation') {
+        document.getElementById('fireOutOverlay').classList.add('active');
+      }
+    }
+
+    function confirmFireOut() {
+      clearFireAlarm(barangayKey).then(() => {
+        console.log('Fire cleared for ' + barangayKey);
+        logFireIncident({
+          barangay: barangayKey,
+          action: 'fire_cleared',
+          cleared_by: sessionStorage.getItem('user') || 'operator',
+          status: 'cleared'
+        });
+      });
+      document.getElementById('fireOutOverlay').classList.remove('active');
+    }
+
+    function dismissFireOut() {
+      document.getElementById('fireOutOverlay').classList.remove('active');
     }
 
     // =====================================================
@@ -526,7 +608,12 @@
 
         // Navigate button for fire nodes
         const navBtn = (node.online && node.category === 'Fire' && parseFloat(node.lat) !== 0)
-          ? `<a href="https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}" target="_blank" class="navigate-btn" style="margin-top:8px">🚒 Navigate to Fire</a>`
+          ? `<a href="https://www.google.com/maps/dir/${FIRE_STATION_LAT},${FIRE_STATION_LNG}/${node.lat},${node.lng}" target="_blank" class="navigate-btn" style="margin-top:8px">Navigate to Fire</a>`
+          : '';
+
+        // Fire lock indicator
+        const fireLockBadge = node.fire_locked
+          ? `<div class="fire-lock-badge">FIRE LOCKED — Waiting for operator confirmation</div>`
           : '';
 
         return `
@@ -577,6 +664,7 @@
               </div>
             </div>
             ${offlineFireBadge}
+            ${fireLockBadge}
             ${navBtn}
           </div>
         `;

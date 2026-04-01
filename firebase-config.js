@@ -19,7 +19,7 @@ const database = firebase.database();
 // =====================================================
 // CONSTANTS
 // =====================================================
-const NODE_OFFLINE_TIMEOUT_MS = 120000;  // 2 minutes
+const NODE_OFFLINE_TIMEOUT_MS = 240000;  // 4 minutes — as required by instructor
 
 // =====================================================
 // GPS PERSISTENCE CACHE
@@ -190,6 +190,61 @@ function listenToUnregisteredNodes(callback) {
   const ref = database.ref('unregistered_nodes');
   ref.on('value', (snapshot) => callback(snapshot.val() || {}));
   return () => ref.off('value');
+}
+
+// =====================================================
+// FIRE STATUS LISTENER — reads fire_status flags
+// =====================================================
+function listenToFireStatus(callback) {
+  const ref = database.ref('fire_status');
+  ref.on('value', (snapshot) => callback(snapshot.val() || {}));
+  return () => ref.off('value');
+}
+
+// =====================================================
+// CLEAR FIRE ALARM — operator confirms fire is out
+// Writes fire_cleared:true to Firebase so gateway/nodes unlock
+// =====================================================
+function clearFireAlarm(barangay) {
+  return database.ref('fire_status/' + barangay).update({
+    fire_cleared: true,
+    cleared_at: firebase.database.ServerValue.TIMESTAMP,
+    cleared_by: sessionStorage.getItem('user') || 'operator'
+  });
+}
+
+// =====================================================
+// LOG FIRE INCIDENT — records for history
+// =====================================================
+function logFireIncident(data) {
+  return database.ref('fire_incidents').push({
+    ...data,
+    timestamp: firebase.database.ServerValue.TIMESTAMP
+  });
+}
+
+// =====================================================
+// LISTEN TO FIRE INCIDENTS — for historical log
+// =====================================================
+function listenToFireIncidents(callback, limit = 20) {
+  const ref = database.ref('fire_incidents').orderByChild('timestamp').limitToLast(limit);
+  ref.on('value', (snapshot) => {
+    const incidents = [];
+    snapshot.forEach(child => {
+      incidents.push({ id: child.key, ...child.val() });
+    });
+    // Reverse so newest is first
+    incidents.reverse();
+    callback(incidents);
+  });
+  return () => ref.off('value');
+}
+
+// =====================================================
+// DELETE UNREGISTERED NODE (when it gets a barangay)
+// =====================================================
+function deleteUnregisteredNode(nodeKey) {
+  return database.ref('unregistered_nodes/' + nodeKey).remove();
 }
 
 // =====================================================
