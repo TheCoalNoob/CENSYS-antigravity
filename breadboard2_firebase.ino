@@ -195,7 +195,7 @@ bool isValidGPS(String lat, String lng) {
 }
 
 const unsigned long NODE_TIMEOUT_MS = 240000;  // 4 minutes — as required by instructor
-const unsigned long NODE_LONG_OFFLINE_MS = 14400000;  // 4 hours — clear barangay after this
+const unsigned long NODE_LONG_OFFLINE_MS = 10800000;  // 3 hours — clear barangay after this
 
 // =====================================================
 // FIRE LOCK — once Fire is detected, LOCK the node
@@ -617,7 +617,16 @@ bool isNoisePacket(String rx, String tempStr, String humStr, String smokeStr, St
 }
 
 // =====================================================
-// CATEGORY CLASSIFICATION
+// CATEGORY CLASSIFICATION — Sensor-count based
+// Each of 4 sensors gets HIGH/LOW evaluation:
+//   Temperature HIGH: >= 42°C
+//   Humidity HIGH:    <= 25%
+//   Smoke HIGH:       >= 400
+//   Fire Sensor HIGH: Flame detected
+// Count total HIGH sensors:
+//   3 or 4 HIGH → Fire
+//   2 HIGH      → Warning
+//   0 or 1 HIGH → Normal
 // =====================================================
 String classifyCategory(String tempStr, String humStr, String smokeStr, String fireStr, String healthStr) {
   if (healthStr.indexOf("Needs replacement") >= 0) {
@@ -627,42 +636,34 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
   float temp = tempStr.toFloat();
   float hum  = humStr.toFloat();
   int smoke  = smokeStr.toInt();
-  bool flame = (fireStr == "Flame");  // Only corroborated flame counts
-  bool warningFlame = (fireStr == "Warning-Flame");  // Uncorroborated = warning only
+  bool flame = (fireStr == "Flame" || fireStr == "Warning-Flame");
 
-  int fireVotes = 0;
-  int warningVotes = 0;
+  int highCount = 0;
 
-  if (!isReplacementValue(tempStr)) {
-    if (temp >= 58.0) fireVotes++;
-    else if (temp >= 39.0) warningVotes++;
+  // Sensor 1: Temperature
+  if (!isReplacementValue(tempStr) && temp >= 42.0) {
+    highCount++;
   }
 
-  if (!isReplacementValue(smokeStr)) {
-    if (smoke >= 850) fireVotes++;
-    else if (smoke >= 450) warningVotes++;
+  // Sensor 2: Humidity (inverted — LOW humidity = HIGH danger)
+  if (!isReplacementValue(humStr) && hum <= 25.0 && hum > 0.0) {
+    highCount++;
   }
 
+  // Sensor 3: Smoke (MQ-2)
+  if (!isReplacementValue(smokeStr) && smoke >= 400) {
+    highCount++;
+  }
+
+  // Sensor 4: Fire/Flame sensor
   if (!isReplacementValue(fireStr) && flame) {
-    fireVotes++;
+    highCount++;
   }
 
-  if (warningFlame) warningVotes++;  // Uncorroborated flame = warning vote
+  Serial.println("CLASSIFY: T=" + tempStr + " H=" + humStr + " S=" + smokeStr + " F=" + fireStr + " → HIGH=" + String(highCount));
 
-  if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
-    if (temp >= 39.0 && hum <= 25.0) warningVotes++;
-    if (temp >= 45.0 && hum <= 20.0) warningVotes++;
-  }
-
-  if (fireVotes >= 2) return "Fire";
-  if (fireVotes >= 1 && warningVotes >= 1) return "Fire";
-  if (flame && smoke >= 450) return "Fire";
-  if (flame && temp >= 39.0) return "Fire";
-  if (temp >= 65.0) return "Fire";
-
-  if (fireVotes == 1) return "Warning";
-  if (warningVotes >= 1) return "Warning";
-
+  if (highCount >= 3) return "Fire";
+  if (highCount == 2) return "Warning";
   return "Normal";
 }
 
@@ -698,7 +699,7 @@ void pushNodeToFirebase(int nodeId) {
 
   // Check if node has been offline >4 hours — clear barangay
   if (isNodeLongOffline(nodeId) && cachedNodeBarangay[nodeId].length() > 0) {
-    Serial.println("LONG OFFLINE: Node" + String(nodeId) + " >4hrs — clearing barangay " + cachedNodeBarangay[nodeId]);
+    Serial.println("LONG OFFLINE: Node" + String(nodeId) + " >3hrs — clearing barangay " + cachedNodeBarangay[nodeId]);
     cachedNodeBarangay[nodeId] = "";
   }
 
@@ -1465,17 +1466,19 @@ void loop() {
     String detectedBrgy = getBarangayFromCoords(latStr.toFloat(), lngStr.toFloat());
     if (detectedBrgy.length() > 0 && cachedNodeBarangay[originNode] != detectedBrgy) {
       if (cachedNodeBarangay[originNode].length() > 0) {
-        // Moving from one barangay to another — delete old entry
-        Serial.println("BARANGAY CHANGE: Node" + String(originNode) + " " + cachedNodeBarangay[originNode] + " → " + detectedBrgy);
-        // Delete from old barangay in Firebase
+        // Moving from one barangay to another — KEEP old entry (preserve per-barangay data)
+        // Old entry stays with online:false and last sensor readings
+        Serial.println("BARANGAY CHANGE: Node" + String(originNode) + " " + cachedNodeBarangay[originNode] + " → " + detectedBrgy + " (old entry preserved)");
+        // Mark old entry as offline in Firebase (don't delete)
         if (WiFi.status() == WL_CONNECTED) {
-          HTTPClient httpDel;
-          WiFiClientSecure clientDel;
-          clientDel.setInsecure();
-          String delUrl = String(FIREBASE_HOST) + "/barangays/" + cachedNodeBarangay[originNode] + "/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
-          httpDel.begin(clientDel, delUrl);
-          httpDel.sendRequest("DELETE");
-          httpDel.end();
+          HTTPClient httpPatch;
+          WiFiClientSecure clientPatch;
+          clientPatch.setInsecure();
+          String patchUrl = String(FIREBASE_HOST) + "/barangays/" + cachedNodeBarangay[originNode] + "/node" + String(originNode) + ".json?auth=" + String(FIREBASE_AUTH);
+          httpPatch.begin(clientPatch, patchUrl);
+          httpPatch.addHeader("Content-Type", "application/json");
+          httpPatch.PATCH("{\"online\":false}");
+          httpPatch.end();
         }
       }
       cachedNodeBarangay[originNode] = detectedBrgy;

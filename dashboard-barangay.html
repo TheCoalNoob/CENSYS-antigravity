@@ -209,7 +209,6 @@
               <div class="legend__item"><span class="legend__dot" style="background:#d97706"></span> Warning</div>
               <div class="legend__item"><span class="legend__dot" style="background:#dc2626"></span> Fire</div>
               <div class="legend__item"><span class="legend__dot" style="background:#9ca3af"></span> Offline</div>
-              <div class="legend__item"><span class="legend__dot" style="background:#c2410c;border-color:#7c2d12"></span> Offline (Possibly Caught Fire)</div>
             </div>
           </div>
           <div class="layout-split__side">
@@ -365,8 +364,8 @@
                            node.category === 'Warning' ? 'node-card--warn' : '';
         const catBadge = `<span class="badge ${categoryBadgeClass(node.category)}">${safe(node.category)}</span>`;
         const statusBadge = `<span class="badge ${statusBadgeClass(node.online)}">${node.online ? 'Online' : 'Offline'}</span>`;
-        const offlineFireBadge = (!node.online && (node.category === 'Fire' || node.category === 'Warning'))
-          ? `<div style="margin-top:6px;padding:6px 10px;background:linear-gradient(135deg,#7c2d12,#c2410c);color:white;border-radius:8px;font-size:11px;font-weight:700;text-align:center">OFFLINE (POSSIBLY CAUGHT FIRE)</div>`
+        const offlineFireBadge = (!node.online && node.fire_locked)
+          ? `<div style="margin-top:6px;padding:6px 10px;background:linear-gradient(135deg,#7c2d12,#c2410c);color:white;border-radius:8px;font-size:11px;font-weight:700;text-align:center">OFFLINE — Fire was active before disconnect</div>`
           : '';
 
         const fireLockBadge = node.fire_locked

@@ -16,21 +16,28 @@ String NODE_PASSKEY = "CENSYS_N4_2026";   // change per node
 // BARANGAY BOUNDARY POLYGONS (for GPS auto-detection)
 // Coordinates traced from Google Maps
 // =====================================================
-const int KALUNASAN_PTS = 7;
+const int KALUNASAN_PTS = 16;
 const float KALUNASAN_POLY[][2] = {
-  {10.3422, 123.8828}, {10.3392, 123.8763}, {10.3310, 123.8780},
-  {10.3246, 123.8835}, {10.3246, 123.8904}, {10.3310, 123.8935},
-  {10.3380, 123.8890}
+  {10.3415, 123.8759}, {10.3410, 123.8805}, {10.3395, 123.8842},
+  {10.3380, 123.8870}, {10.3350, 123.8895}, {10.3318, 123.8905},
+  {10.3290, 123.8895}, {10.3258, 123.8859}, {10.3245, 123.8841},
+  {10.3245, 123.8800}, {10.3260, 123.8775}, {10.3290, 123.8760},
+  {10.3310, 123.8758}, {10.3340, 123.8755}, {10.3370, 123.8752},
+  {10.3392, 123.8755}
 };
-const int SANNICOLAS_PTS = 5;
+const int SANNICOLAS_PTS = 12;
 const float SANNICOLAS_POLY[][2] = {
-  {10.2980, 123.8851}, {10.2961, 123.8917}, {10.2924, 123.8882},
-  {10.2934, 123.8864}, {10.2960, 123.8840}
+  {10.2962, 123.8896}, {10.2960, 123.8918}, {10.2952, 123.8930},
+  {10.2940, 123.8928}, {10.2927, 123.8924}, {10.2917, 123.8910},
+  {10.2920, 123.8897}, {10.2927, 123.8885}, {10.2934, 123.8872},
+  {10.2945, 123.8864}, {10.2955, 123.8870}, {10.2960, 123.8880}
 };
-const int KALUBIHAN_PTS = 5;
+const int KALUBIHAN_PTS = 10;
 const float KALUBIHAN_POLY[][2] = {
-  {10.2999, 123.8955}, {10.2996, 123.8968}, {10.2977, 123.9004},
-  {10.2965, 123.8980}, {10.2980, 123.8950}
+  {10.2990, 123.8963}, {10.2989, 123.8980}, {10.2985, 123.8998},
+  {10.2978, 123.9004}, {10.2965, 123.9003}, {10.2952, 123.8993},
+  {10.2951, 123.8978}, {10.2958, 123.8963}, {10.2970, 123.8955},
+  {10.2980, 123.8957}
 };
 
 // Barangay centers for fallback nearest-match
@@ -314,36 +321,31 @@ bool isNodeInPath(String path, int nodeId) {
 
 // =====================================================
 // CATEGORY CLASSIFICATION (same as gateway)
+// Sensor-count based: count HIGH sensors, 3+=Fire, 2=Warning, 0-1=Normal
 // =====================================================
 String classifyCategory(String tempStr, String humStr, String smokeStr, String fireStr, String healthStr) {
   if (healthStr.indexOf("Needs replacement") >= 0) return "Warning";
   float temp = tempStr.toFloat();
   float hum  = humStr.toFloat();
   int smoke  = smokeStr.toInt();
-  bool flame = (fireStr == "Flame");  // Only corroborated flame counts as fire vote
-  bool warningFlame = (fireStr == "Warning-Flame");  // Uncorroborated = warning only
-  int fireVotes = 0, warningVotes = 0;
+  bool flame = (fireStr == "Flame" || fireStr == "Warning-Flame");
 
-  if (!isReplacementValue(tempStr)) {
-    if (temp >= 58.0) fireVotes++; else if (temp >= 39.0) warningVotes++;
-  }
-  if (!isReplacementValue(smokeStr)) {
-    if (smoke >= 850) fireVotes++; else if (smoke >= 450) warningVotes++;
-  }
-  if (!isReplacementValue(fireStr) && flame) fireVotes++;
-  if (warningFlame) warningVotes++;  // Uncorroborated flame = warning vote
-  if (!isReplacementValue(tempStr) && !isReplacementValue(humStr)) {
-    if (temp >= 39.0 && hum <= 25.0) warningVotes++;
-    if (temp >= 45.0 && hum <= 20.0) warningVotes++;
-  }
+  int highCount = 0;
 
-  if (fireVotes >= 2) return "Fire";
-  if (fireVotes >= 1 && warningVotes >= 1) return "Fire";
-  if (flame && smoke >= 450) return "Fire";
-  if (flame && temp >= 39.0) return "Fire";
-  if (temp >= 65.0) return "Fire";
-  if (fireVotes == 1) return "Warning";
-  if (warningVotes >= 1) return "Warning";
+  // Sensor 1: Temperature >= 42°C
+  if (!isReplacementValue(tempStr) && temp >= 42.0) highCount++;
+
+  // Sensor 2: Humidity <= 25% (inverted — LOW humidity = HIGH danger)
+  if (!isReplacementValue(humStr) && hum <= 25.0 && hum > 0.0) highCount++;
+
+  // Sensor 3: Smoke >= 400
+  if (!isReplacementValue(smokeStr) && smoke >= 400) highCount++;
+
+  // Sensor 4: Fire/Flame sensor
+  if (!isReplacementValue(fireStr) && flame) highCount++;
+
+  if (highCount >= 3) return "Fire";
+  if (highCount == 2) return "Warning";
   return "Normal";
 }
 
