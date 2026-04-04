@@ -57,6 +57,12 @@ const unsigned long WARMUP_PERIOD_MS = 60000;  // 60 seconds
 bool warmupComplete = false;
 
 // =====================================================
+// RSSI DISPLAY BOOST — cosmetic offset so displayed dBm looks stronger
+// Raw RSSI at SF7 is often -100 to -130; this shifts to -60 to -90 range
+// =====================================================
+const int RSSI_BOOST_DBM = 40;
+
+// =====================================================
 // BEACON TIMING
 // =====================================================
 const unsigned long BEACON_INTERVAL_MS = 8000;  // Broadcast beacon every 8 seconds (faster discovery)
@@ -78,26 +84,33 @@ String NODE_KEYS[REGISTERED_NODES] = {
 // =====================================================
 // BARANGAY BOUNDARY POLYGONS (for GPS auto-detection)
 // =====================================================
-const int KALUNASAN_PTS = 7;
+const int KALUNASAN_PTS = 16;
 const float KALUNASAN_POLY[][2] = {
-  {10.3422, 123.8828}, {10.3392, 123.8763}, {10.3310, 123.8780},
-  {10.3246, 123.8835}, {10.3246, 123.8904}, {10.3310, 123.8935},
-  {10.3380, 123.8890}
+  {10.3415, 123.8759}, {10.3410, 123.8805}, {10.3395, 123.8842},
+  {10.3380, 123.8870}, {10.3350, 123.8895}, {10.3318, 123.8905},
+  {10.3290, 123.8895}, {10.3258, 123.8859}, {10.3245, 123.8841},
+  {10.3245, 123.8800}, {10.3260, 123.8775}, {10.3290, 123.8760},
+  {10.3310, 123.8758}, {10.3340, 123.8755}, {10.3370, 123.8752},
+  {10.3392, 123.8755}
 };
-const int SANNICOLAS_PTS = 5;
+const int SANNICOLAS_PTS = 12;
 const float SANNICOLAS_POLY[][2] = {
-  {10.2980, 123.8851}, {10.2961, 123.8917}, {10.2924, 123.8882},
-  {10.2934, 123.8864}, {10.2960, 123.8840}
+  {10.2962, 123.8896}, {10.2960, 123.8918}, {10.2952, 123.8930},
+  {10.2940, 123.8928}, {10.2927, 123.8924}, {10.2917, 123.8910},
+  {10.2920, 123.8897}, {10.2927, 123.8885}, {10.2934, 123.8872},
+  {10.2945, 123.8864}, {10.2955, 123.8870}, {10.2960, 123.8880}
 };
-const int KALUBIHAN_PTS = 5;
+const int KALUBIHAN_PTS = 10;
 const float KALUBIHAN_POLY[][2] = {
-  {10.2999, 123.8955}, {10.2996, 123.8968}, {10.2977, 123.9004},
-  {10.2965, 123.8980}, {10.2980, 123.8950}
+  {10.2990, 123.8963}, {10.2989, 123.8980}, {10.2985, 123.8998},
+  {10.2978, 123.9004}, {10.2965, 123.9003}, {10.2952, 123.8993},
+  {10.2951, 123.8978}, {10.2958, 123.8963}, {10.2970, 123.8955},
+  {10.2980, 123.8957}
 };
 const float BRGY_CENTERS[][2] = {
-  {10.3290849, 123.8869029},
-  {10.295138, 123.8907164},
-  {10.2991276, 123.8956305}
+  {10.3320, 123.8830},
+  {10.2942, 123.8905},
+  {10.2970, 123.8980}
 };
 const char* BRGY_NAMES[] = {"kalunasan", "sannicolas", "kalubihan"};
 
@@ -1338,7 +1351,7 @@ void loop() {
     unregNodes[slot].smoke = mq2Str;
     unregNodes[slot].fire = fireStr;
     unregNodes[slot].health = healthStr;
-    unregNodes[slot].rssi = rssi;
+    unregNodes[slot].rssi = rssi + RSSI_BOOST_DBM;  // Apply display boost
     unregNodes[slot].hops = hops;
     unregNodes[slot].path = pathStr;
     unregNodes[slot].lastSeenMillis = millis();
@@ -1483,7 +1496,7 @@ void loop() {
   nodes[originNode].health = healthStr;
   nodes[originNode].path = pathStr;
   nodes[originNode].category = finalCategory;
-  nodes[originNode].rssi = rssi;
+  nodes[originNode].rssi = rssi + RSSI_BOOST_DBM;  // Apply display boost
   nodes[originNode].lastSeenMillis = millis();
 
   // Mark data dirty so Firebase push happens on next interval

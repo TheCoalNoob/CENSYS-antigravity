@@ -92,7 +92,7 @@ const unsigned long FIRE_CLEAR_CHECK_INTERVAL_MS = 15000;  // Check every 15s
 // WIFI CREDENTIALS
 // =====================================================
 const char* STA_SSID = "IKYK";
-const char* STA_PASS = "444everydayOK*";
+const char* STA_PASS = "444everydayOK";
 
 // =====================================================
 // FIREBASE CONFIG (same as gateway)
