@@ -16,35 +16,32 @@ String NODE_PASSKEY = "CENSYS_N4_2026";   // change per node
 // BARANGAY BOUNDARY POLYGONS (for GPS auto-detection)
 // Coordinates traced from Google Maps
 // =====================================================
-const int KALUNASAN_PTS = 16;
+const int KALUNASAN_PTS = 11;
 const float KALUNASAN_POLY[][2] = {
-  {10.3415, 123.8759}, {10.3410, 123.8805}, {10.3395, 123.8842},
-  {10.3380, 123.8870}, {10.3350, 123.8895}, {10.3318, 123.8905},
-  {10.3290, 123.8895}, {10.3258, 123.8859}, {10.3245, 123.8841},
-  {10.3245, 123.8800}, {10.3260, 123.8775}, {10.3290, 123.8760},
-  {10.3310, 123.8758}, {10.3340, 123.8755}, {10.3370, 123.8752},
-  {10.3392, 123.8755}
+  {10.341147, 123.876044}, {10.342150, 123.882685}, {10.328392, 123.890042},
+  {10.324946, 123.890084}, {10.324679, 123.889177}, {10.326923, 123.887998},
+  {10.327401, 123.886302}, {10.330613, 123.883883}, {10.332418, 123.881005},
+  {10.332171, 123.877612}, {10.331285, 123.877069}
 };
-const int SANNICOLAS_PTS = 12;
+const int SANNICOLAS_PTS = 8;
 const float SANNICOLAS_POLY[][2] = {
-  {10.2962, 123.8896}, {10.2960, 123.8918}, {10.2952, 123.8930},
-  {10.2940, 123.8928}, {10.2927, 123.8924}, {10.2917, 123.8910},
-  {10.2920, 123.8897}, {10.2927, 123.8885}, {10.2934, 123.8872},
-  {10.2945, 123.8864}, {10.2955, 123.8870}, {10.2960, 123.8880}
+  {10.298097, 123.884851}, {10.297366, 123.889516}, {10.296082, 123.891875},
+  {10.292559, 123.892416}, {10.292218, 123.889793}, {10.293630, 123.889548},
+  {10.293184, 123.887004}, {10.298097, 123.884851}
 };
-const int KALUBIHAN_PTS = 10;
+const int KALUBIHAN_PTS = 11;
 const float KALUBIHAN_POLY[][2] = {
-  {10.2990, 123.8963}, {10.2989, 123.8980}, {10.2985, 123.8998},
-  {10.2978, 123.9004}, {10.2965, 123.9003}, {10.2952, 123.8993},
-  {10.2951, 123.8978}, {10.2958, 123.8963}, {10.2970, 123.8955},
-  {10.2980, 123.8957}
+  {10.298904, 123.895511}, {10.299558, 123.896799}, {10.297785, 123.897421},
+  {10.298878, 123.899980}, {10.297621, 123.900618}, {10.296194, 123.898220},
+  {10.294903, 123.897759}, {10.294304, 123.899054}, {10.293623, 123.897845},
+  {10.293476, 123.897051}, {10.298904, 123.895511}
 };
 
 // Barangay centers for fallback nearest-match
 const float BRGY_CENTERS[][2] = {
-  {10.3290849, 123.8869029},  // kalunasan
-  {10.295138, 123.8907164},   // sannicolas
-  {10.2991276, 123.8956305}   // kalubihan
+  {10.3325, 123.8835},   // kalunasan (centroid of new polygon)
+  {10.2953, 123.8893},   // sannicolas
+  {10.2968, 123.8981}    // kalubihan
 };
 const char* BRGY_NAMES[] = {"kalunasan", "sannicolas", "kalubihan"};
 
@@ -94,6 +91,11 @@ bool fireLocked = false;
 unsigned long fireLockedTime = 0;
 unsigned long lastFireClearCheck = 0;
 const unsigned long FIRE_CLEAR_CHECK_INTERVAL_MS = 15000;  // Check every 15s
+
+// Fire cooldown — after fire_cleared, nodes read normally for 5 min before re-locking
+bool fireCooldownActive = false;
+unsigned long fireCooldownUntil = 0;
+const unsigned long FIRE_COOLDOWN_MS = 300000;  // 5 minutes
 
 // =====================================================
 // WIFI CREDENTIALS
@@ -356,6 +358,16 @@ String classifyCategory(String tempStr, String humStr, String smokeStr, String f
 String getLockedCategory(String tempStr, String humStr, String mq2Str, String fireStr, String healthStr) {
   String raw = classifyCategory(tempStr, humStr, mq2Str, fireStr, healthStr);
   
+  // During cooldown period, return raw category — let nodes read normally
+  if (fireCooldownActive) {
+    if (millis() >= fireCooldownUntil) {
+      fireCooldownActive = false;
+      Serial.println("FIRE COOLDOWN ENDED — fire detection resumed");
+    } else {
+      return raw;  // During cooldown, no fire-locking
+    }
+  }
+  
   // If we hit Fire for the first time, lock it
   if (raw == "Fire" && !fireLocked) {
     fireLocked = true;
@@ -396,7 +408,9 @@ void checkFireClearedWiFi() {
     if (payload == "true") {
       fireLocked = false;
       fireLockedTime = 0;
-      Serial.println("FIRE CLEARED: Unlocked by operator via website");
+      fireCooldownActive = true;
+      fireCooldownUntil = millis() + FIRE_COOLDOWN_MS;
+      Serial.println("FIRE CLEARED: Unlocked — 5 min cooldown started (nodes read normally)");
     }
   }
   http.end();
@@ -667,17 +681,17 @@ void processIncoming() {
   }
 
   // ============================================
-  // LoRa mode: STRICT CHAIN relay
+  // LoRa mode: DOWNWARD CHAIN relay
   // 4 → 3 → 2 → 1 → Gateway
   //
-  // Each node only relays data from its DIRECT
-  // upstream neighbor (sender == NODE_ID + 1).
-  // This prevents duplicate relays and circular
-  // routing — data flows strictly down the chain.
+  // Accept data from ANY node with ID > NODE_ID
+  // (upstream neighbor). If nodes in between are
+  // offline, data skips directly (e.g., 4 → 1).
+  // NEVER relay data back to the sender or any
+  // node already in the path — prevents loops.
   // ============================================
-  if (sender != NODE_ID + 1) {
-    // Not from our direct chain neighbor — ignore
-    // (don't add to seen, so the chain relay can still be processed later)
+  if (sender <= NODE_ID) {
+    // Data from a node at same or lower ID — going backwards, ignore
     return;
   }
   if (isSeen(sig)) return;

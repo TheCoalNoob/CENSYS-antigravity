@@ -7,6 +7,7 @@
   <meta name="description" content="CENSYS: A LoRa Mesh-Based Community Fire Monitoring Network with Real-Time Sensor Monitoring and a Geo-Mapped Emergency Dashboard for Fire Stations.">
   <link rel="stylesheet" href="styles.css">
   <style>
+    body { overflow: auto; }
     .hero {
       min-height: 100vh;
       display: flex;
@@ -146,7 +147,7 @@
       margin-bottom: 6px;
     }
     .role-card__desc {
-      font-size: 14px;
+      font-size: 15px;
       color: var(--text-secondary);
       line-height: 1.5;
     }
@@ -163,7 +164,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--text-secondary);
     }
@@ -179,10 +180,159 @@
     }
     .hero__footer {
       margin-top: 56px;
-      font-size: 12px;
+      font-size: 13px;
       color: var(--text-muted);
       position: relative;
       z-index: 1;
+    }
+
+    /* ===== ABOUT US FLOATING BUTTON ===== */
+    .about-us-fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 24px;
+      background: linear-gradient(135deg, #1e293b, #334155);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      transition: all 0.3s ease;
+      letter-spacing: 0.3px;
+    }
+    .about-us-fab:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      background: linear-gradient(135deg, #334155, #475569);
+    }
+    .about-us-fab__icon {
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #dc2626, #ea580c);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    /* ===== ABOUT US POPUP OVERLAY ===== */
+    .about-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .about-overlay.active {
+      display: flex;
+    }
+    .about-modal {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 24px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+      padding: 40px 36px 32px;
+      max-width: 560px;
+      width: 92%;
+      text-align: center;
+      animation: about-modal-in 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+      position: relative;
+    }
+    @keyframes about-modal-in {
+      from { transform: scale(0.85) translateY(20px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .about-modal__header {
+      font-size: 24px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-bottom: 6px;
+    }
+    .about-modal__subheader {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 28px;
+      font-weight: 500;
+    }
+    .about-devs {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .about-dev {
+      flex: 1;
+      min-width: 200px;
+      max-width: 240px;
+      text-align: center;
+    }
+    .about-dev__photo {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin: 0 auto 14px;
+      border: 4px solid white;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      display: block;
+    }
+    .about-dev__name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #1e293b;
+      margin-bottom: 4px;
+    }
+    .about-dev__title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      line-height: 1.4;
+    }
+    .about-summary {
+      font-size: 14px;
+      color: #475569;
+      line-height: 1.7;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+      border-radius: 14px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .about-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 32px;
+      background: linear-gradient(135deg, #1e293b, #334155);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .about-close-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
     }
   </style>
 </head>
@@ -260,5 +410,52 @@
       CENSYS &copy; 2026 — Cebu City, Philippines
     </div>
   </main>
+
+  <!-- ABOUT US FLOATING BUTTON -->
+  <button class="about-us-fab" id="aboutUsFab" onclick="openAboutUs()">
+    <span class="about-us-fab__icon">i</span>
+    About Us
+  </button>
+
+  <!-- ABOUT US POPUP -->
+  <div class="about-overlay" id="aboutOverlay">
+    <div class="about-modal">
+      <div class="about-modal__header">Meet the Developers</div>
+      <div class="about-modal__subheader">CENSYS Fire Monitoring System</div>
+      <div class="about-devs">
+        <div class="about-dev">
+          <img class="about-dev__photo" src="photos/jugo.jpg" alt="Adriane Vincent B. Jugo">
+          <div class="about-dev__name">Adriane Vincent B. Jugo</div>
+          <div class="about-dev__title">Bachelor of Science in<br>Computer Engineering — 4th Year</div>
+        </div>
+        <div class="about-dev">
+          <img class="about-dev__photo" src="photos/villarta.jpg" alt="Norejs M. Villarta">
+          <div class="about-dev__name">Norejs M. Villarta</div>
+          <div class="about-dev__title">Bachelor of Science in<br>Computer Engineering — 4th Year</div>
+        </div>
+      </div>
+      <div class="about-summary">
+        CENSYS is a thesis project developed as a LoRa mesh-based community fire monitoring network designed to protect barangays in Cebu City. By integrating real-time IoT sensor nodes, multi-hop LoRa communication, and a geo-mapped emergency dashboard, CENSYS provides early fire detection and instant alerts to fire stations — ensuring faster response times and safer communities.
+      </div>
+      <button class="about-close-btn" onclick="closeAboutUs()">Close</button>
+    </div>
+  </div>
+
+  <script>
+    function openAboutUs() {
+      document.getElementById('aboutOverlay').classList.add('active');
+    }
+    function closeAboutUs() {
+      document.getElementById('aboutOverlay').classList.remove('active');
+    }
+    // Close on overlay click (outside modal)
+    document.getElementById('aboutOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeAboutUs();
+    });
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeAboutUs();
+    });
+  </script>
 </body>
 </html>

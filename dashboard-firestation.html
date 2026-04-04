@@ -7,6 +7,22 @@
   <meta name="description" content="Fire station command dashboard — real-time monitoring of all barangays, fire alarms, and BFP alarm levels.">
   <link rel="stylesheet" href="styles.css">
   <style>
+    body {
+      overflow: auto;
+      background: url('photos/quezon-philippines-bg.jpg') center center / cover no-repeat fixed;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255, 255, 255, 0.50);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .page-wrapper {
+      position: relative;
+      z-index: 1;
+    }
     .page-content {
       padding: 16px 0 20px;
       flex: 1;

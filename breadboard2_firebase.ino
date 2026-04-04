@@ -84,33 +84,30 @@ String NODE_KEYS[REGISTERED_NODES] = {
 // =====================================================
 // BARANGAY BOUNDARY POLYGONS (for GPS auto-detection)
 // =====================================================
-const int KALUNASAN_PTS = 16;
+const int KALUNASAN_PTS = 11;
 const float KALUNASAN_POLY[][2] = {
-  {10.3415, 123.8759}, {10.3410, 123.8805}, {10.3395, 123.8842},
-  {10.3380, 123.8870}, {10.3350, 123.8895}, {10.3318, 123.8905},
-  {10.3290, 123.8895}, {10.3258, 123.8859}, {10.3245, 123.8841},
-  {10.3245, 123.8800}, {10.3260, 123.8775}, {10.3290, 123.8760},
-  {10.3310, 123.8758}, {10.3340, 123.8755}, {10.3370, 123.8752},
-  {10.3392, 123.8755}
+  {10.341147, 123.876044}, {10.342150, 123.882685}, {10.328392, 123.890042},
+  {10.324946, 123.890084}, {10.324679, 123.889177}, {10.326923, 123.887998},
+  {10.327401, 123.886302}, {10.330613, 123.883883}, {10.332418, 123.881005},
+  {10.332171, 123.877612}, {10.331285, 123.877069}
 };
-const int SANNICOLAS_PTS = 12;
+const int SANNICOLAS_PTS = 8;
 const float SANNICOLAS_POLY[][2] = {
-  {10.2962, 123.8896}, {10.2960, 123.8918}, {10.2952, 123.8930},
-  {10.2940, 123.8928}, {10.2927, 123.8924}, {10.2917, 123.8910},
-  {10.2920, 123.8897}, {10.2927, 123.8885}, {10.2934, 123.8872},
-  {10.2945, 123.8864}, {10.2955, 123.8870}, {10.2960, 123.8880}
+  {10.298097, 123.884851}, {10.297366, 123.889516}, {10.296082, 123.891875},
+  {10.292559, 123.892416}, {10.292218, 123.889793}, {10.293630, 123.889548},
+  {10.293184, 123.887004}, {10.298097, 123.884851}
 };
-const int KALUBIHAN_PTS = 10;
+const int KALUBIHAN_PTS = 11;
 const float KALUBIHAN_POLY[][2] = {
-  {10.2990, 123.8963}, {10.2989, 123.8980}, {10.2985, 123.8998},
-  {10.2978, 123.9004}, {10.2965, 123.9003}, {10.2952, 123.8993},
-  {10.2951, 123.8978}, {10.2958, 123.8963}, {10.2970, 123.8955},
-  {10.2980, 123.8957}
+  {10.298904, 123.895511}, {10.299558, 123.896799}, {10.297785, 123.897421},
+  {10.298878, 123.899980}, {10.297621, 123.900618}, {10.296194, 123.898220},
+  {10.294903, 123.897759}, {10.294304, 123.899054}, {10.293623, 123.897845},
+  {10.293476, 123.897051}, {10.298904, 123.895511}
 };
 const float BRGY_CENTERS[][2] = {
-  {10.3320, 123.8830},
-  {10.2942, 123.8905},
-  {10.2970, 123.8980}
+  {10.3325, 123.8835},
+  {10.2953, 123.8893},
+  {10.2968, 123.8981}
 };
 const char* BRGY_NAMES[] = {"kalunasan", "sannicolas", "kalubihan"};
 
@@ -205,6 +202,11 @@ bool fireLockedNodes[5] = {false, false, false, false, false};
 unsigned long fireLockedTime[5] = {0, 0, 0, 0, 0};
 unsigned long lastFireClearCheck = 0;
 const unsigned long FIRE_CLEAR_CHECK_INTERVAL = 10000;  // Check every 10s
+
+// Fire cooldown — 5 min after fire_cleared, nodes read normally
+bool fireCooldown[5] = {false, false, false, false, false};
+unsigned long fireCooldownUntil[5] = {0, 0, 0, 0, 0};
+const unsigned long FIRE_COOLDOWN_MS = 300000;  // 5 minutes
 
 // =====================================================
 // TEMPORAL STABILITY TRACKER (prevents false fire alarms)
@@ -404,11 +406,13 @@ void checkFireCleared() {
       String payload = http.getString();
       payload.trim();
       if (payload == "true") {
-        Serial.println("FIRE CLEARED: " + String(brgys[b]) + " — unlocking all nodes");
+        Serial.println("FIRE CLEARED: " + String(brgys[b]) + " — unlocking all nodes + 5 min cooldown");
         for (int i = 1; i <= 4; i++) {
           if (cachedNodeBarangay[i] == String(brgys[b])) {
             fireLockedNodes[i] = false;
             fireLockedTime[i] = 0;
+            fireCooldown[i] = true;
+            fireCooldownUntil[i] = millis() + FIRE_COOLDOWN_MS;
           }
         }
         // Reset the flag in Firebase
@@ -1394,51 +1398,65 @@ void loop() {
     }
   }
 
-  // ===== FIRE LOCK: Once Fire is confirmed, LOCK the node =====
-  if (finalCategory == "Fire" && !fireLockedNodes[originNode]) {
-    fireLockedNodes[originNode] = true;
-    fireLockedTime[originNode] = millis();
-    Serial.println("FIRE LOCKED: Node" + String(originNode) + " — will stay Fire until operator confirms fire is out");
-    
-    // Log fire incident to Firebase
-    if (WiFi.status() == WL_CONNECTED) {
-      HTTPClient http;
-      WiFiClientSecure client;
-      client.setInsecure();
-      String brgy = cachedNodeBarangay[originNode];
-      if (brgy.length() == 0) brgy = "unknown";
-      String incidentUrl = String(FIREBASE_HOST) + "/fire_incidents.json?auth=" + String(FIREBASE_AUTH);
-      String json = "{";
-      json += "\"node\":" + String(originNode) + ",";
-      json += "\"barangay\":\"" + brgy + "\",";
-      json += "\"temp\":\"" + esc(tempStr) + "\",";
-      json += "\"smoke\":\"" + esc(mq2Str) + "\",";
-      json += "\"fire_sensor\":\"" + esc(fireStr) + "\",";
-      json += "\"lat\":\"" + esc(nodes[originNode].lat) + "\",";
-      json += "\"lng\":\"" + esc(nodes[originNode].lng) + "\",";
-      json += "\"status\":\"active\",";
-      json += "\"timestamp\":{\".sv\":\"timestamp\"}";
-      json += "}";
-      http.begin(client, incidentUrl);
-      http.addHeader("Content-Type", "application/json");
-      http.POST(json);
-      http.end();
-      
-      // Set fire_status flag for the barangay
-      String statusUrl = String(FIREBASE_HOST) + "/fire_status/" + brgy + ".json?auth=" + String(FIREBASE_AUTH);
-      HTTPClient http2;
-      WiFiClientSecure client2;
-      client2.setInsecure();
-      http2.begin(client2, statusUrl);
-      http2.addHeader("Content-Type", "application/json");
-      http2.PUT("{\"fire_cleared\":false,\"active_since\":{\"_sv\":\"timestamp\"}}");
-      http2.end();
+  // ===== FIRE COOLDOWN CHECK =====
+  // If node is in cooldown, use raw category without fire-lock
+  if (fireCooldown[originNode]) {
+    if (millis() >= fireCooldownUntil[originNode]) {
+      fireCooldown[originNode] = false;
+      Serial.println("FIRE COOLDOWN ENDED: Node" + String(originNode) + " — fire detection resumed");
+    } else {
+      // During cooldown, DON'T fire-lock — let it read normally
+      // finalCategory stays as rawCategory (or stability-adjusted)
     }
   }
   
-  // If fire-locked, override category to Fire regardless of current readings
-  if (fireLockedNodes[originNode]) {
-    finalCategory = "Fire";
+  // ===== FIRE LOCK: Once Fire is confirmed, LOCK the node =====
+  if (!fireCooldown[originNode]) {
+    if (finalCategory == "Fire" && !fireLockedNodes[originNode]) {
+      fireLockedNodes[originNode] = true;
+      fireLockedTime[originNode] = millis();
+      Serial.println("FIRE LOCKED: Node" + String(originNode) + " — will stay Fire until operator confirms fire is out");
+      
+      // Log fire incident to Firebase
+      if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+        WiFiClientSecure client;
+        client.setInsecure();
+        String brgy = cachedNodeBarangay[originNode];
+        if (brgy.length() == 0) brgy = "unknown";
+        String incidentUrl = String(FIREBASE_HOST) + "/fire_incidents.json?auth=" + String(FIREBASE_AUTH);
+        String json = "{";
+        json += "\"node\":" + String(originNode) + ",";
+        json += "\"barangay\":\"" + brgy + "\",";
+        json += "\"temp\":\"" + esc(tempStr) + "\",";
+        json += "\"smoke\":\"" + esc(mq2Str) + "\",";
+        json += "\"fire_sensor\":\"" + esc(fireStr) + "\",";
+        json += "\"lat\":\"" + esc(nodes[originNode].lat) + "\",";
+        json += "\"lng\":\"" + esc(nodes[originNode].lng) + "\",";
+        json += "\"status\":\"active\",";
+        json += "\"timestamp\":{\".sv\":\"timestamp\"}";
+        json += "}";
+        http.begin(client, incidentUrl);
+        http.addHeader("Content-Type", "application/json");
+        http.POST(json);
+        http.end();
+        
+        // Set fire_status flag for the barangay
+        String statusUrl = String(FIREBASE_HOST) + "/fire_status/" + brgy + ".json?auth=" + String(FIREBASE_AUTH);
+        HTTPClient http2;
+        WiFiClientSecure client2;
+        client2.setInsecure();
+        http2.begin(client2, statusUrl);
+        http2.addHeader("Content-Type", "application/json");
+        http2.PUT("{\"fire_cleared\":false,\"active_since\":{\"_sv\":\"timestamp\"}}");
+        http2.end();
+      }
+    }
+    
+    // If fire-locked, override category to Fire regardless of current readings
+    if (fireLockedNodes[originNode]) {
+      finalCategory = "Fire";
+    }
   }
 
   nodes[originNode].online = true;
