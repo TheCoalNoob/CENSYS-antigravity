@@ -389,12 +389,12 @@ function clusterFires(nodesData, radiusMeters = 100) {
 // =====================================================
 function getBFPAlarmLevel(fireIncidentCount) {
   if (fireIncidentCount <= 0) return { level: 0, label: 'No Alarm', class: 'alarm-level--none' };
-  if (fireIncidentCount === 1) return { level: 1, label: '1st Alarm', class: 'alarm-level--1' };
-  if (fireIncidentCount <= 3) return { level: 2, label: '2nd Alarm', class: 'alarm-level--2' };
-  if (fireIncidentCount <= 5) return { level: 3, label: '3rd Alarm', class: 'alarm-level--3' };
-  if (fireIncidentCount <= 7) return { level: 4, label: '4th Alarm', class: 'alarm-level--4' };
-  if (fireIncidentCount <= 9) return { level: 5, label: '5th Alarm', class: 'alarm-level--5' };
-  if (fireIncidentCount <= 11) return { level: 6, label: 'Task Force Alpha', class: 'alarm-level--tfa' };
+  if (fireIncidentCount <= 3) return { level: 1, label: '1st Alarm', class: 'alarm-level--1' };
+  if (fireIncidentCount <= 5) return { level: 2, label: '2nd Alarm', class: 'alarm-level--2' };
+  if (fireIncidentCount <= 7) return { level: 3, label: '3rd Alarm', class: 'alarm-level--3' };
+  if (fireIncidentCount <= 9) return { level: 4, label: '4th Alarm', class: 'alarm-level--4' };
+  if (fireIncidentCount <= 11) return { level: 5, label: '5th Alarm', class: 'alarm-level--5' };
+  if (fireIncidentCount <= 14) return { level: 6, label: 'Task Force Alpha', class: 'alarm-level--tfa' };
   return { level: 7, label: 'Task Force Bravo', class: 'alarm-level--tfb' };
 }
 
