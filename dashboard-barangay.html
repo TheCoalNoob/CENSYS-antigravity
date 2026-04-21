@@ -161,10 +161,15 @@
 
     <main class="page-content">
       <div class="container">
-        <!-- FIRE WARNING (no silence for barangay) -->
-        <div class="fire-warning-banner hidden" id="fireWarning">
-          <div class="fire-warning-banner__title" id="fireWarningTitle">Fire Detected</div>
-          <div class="fire-warning-banner__sub" id="fireWarningSub">Contact the fire station immediately.</div>
+        <!-- FIRE ALARM BANNER -->
+        <div class="alarm-banner alarm-hidden" id="fireWarning">
+          <div>
+            <div class="alarm-banner__text" id="fireWarningTitle">Fire Detected</div>
+            <div class="alarm-banner__sub" id="fireWarningSub">Contact the fire station immediately.</div>
+          </div>
+          <button class="btn btn--danger" id="silenceBtn" onclick="handleSilenceAlarm()">
+            Silence Alarm
+          </button>
         </div>
 
         <!-- WELCOME -->
@@ -256,9 +261,17 @@
 
     startLiveClock('liveClock');
 
+    let prevFireCount = 0;
+
     function handleLogout() {
       clearSession();
       window.location.href = 'index.html';
+    }
+
+    function handleSilenceAlarm() {
+      silenceAlarm();
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
     }
 
     // =====================================================
@@ -451,15 +464,22 @@
         badge.innerHTML = '<span class="badge badge--offline">No Data</span>';
       }
 
-      // Fire warning banner
+      // Fire alarm banner + sound
       const banner = document.getElementById('fireWarning');
+      const alarm = getBFPAlarmLevel(fireCount);
       if (fireCount > 0) {
-        banner.classList.remove('hidden');
-        document.getElementById('fireWarningTitle').textContent = `🔥 Fire Detected — ${fireCount} Node(s)`;
+        banner.classList.remove('alarm-hidden');
+        document.getElementById('fireWarningTitle').textContent = `🔥 ${alarm.label} — ${fireCount} Fire Node(s)`;
         document.getElementById('fireWarningSub').textContent = 'Contact the San Nicolas Fire Substation immediately.';
+
+        if (fireCount > prevFireCount) resetAlarmSilence();
+        if (!alarmSilenced) startAlarmSound();
       } else {
-        banner.classList.add('hidden');
+        banner.classList.add('alarm-hidden');
+        stopAlarmSound();
+        resetAlarmSilence();
       }
+      prevFireCount = fireCount;
 
       updateMarkers(filteredNodes);
       renderNodeCards(filteredNodes);

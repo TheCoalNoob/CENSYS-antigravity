@@ -748,9 +748,10 @@
       // ===== FIRE PROXIMITY CLUSTERING =====
       const fireResult = clusterFires(nodesData, 100);
       const fireIncidents = fireResult.totalIncidents;
+      const totalFireNodes = fireResult.totalFireNodes;
 
-      // BFP Alarm Level (uses cluster/incident count, NOT raw node count)
-      const alarm = getBFPAlarmLevel(fireIncidents);
+      // BFP Alarm Level (uses total fire NODE count)
+      const alarm = getBFPAlarmLevel(totalFireNodes);
       const levelBadge = document.getElementById('alarmLevelBadge');
       levelBadge.className = 'alarm-level ' + alarm.class;
 
@@ -758,7 +759,7 @@
         document.getElementById('alarmLevelText').textContent = 'No Alarm — All Clear';
       } else {
         document.getElementById('alarmLevelText').textContent =
-          `${alarm.label} — ${fireIncidents} fire incident(s)`;
+          `${alarm.label} — ${totalFireNodes} fire node(s)`;
       }
 
       // Cluster info display
@@ -783,11 +784,11 @@
       const banner = document.getElementById('alarmBanner');
       const silenceArea = document.getElementById('silenceBtnArea');
 
-      if (fireIncidents > 0) {
+      if (totalFireNodes > 0) {
         banner.classList.remove('alarm-hidden');
         silenceArea.style.display = 'block';
         document.getElementById('alarmBannerSub').textContent =
-          `${alarm.label}: ${fireIncidents} fire incident(s) detected. Respond immediately.`;
+          `${alarm.label}: ${totalFireNodes} fire node(s) detected. Respond immediately.`;
 
         // New fire event resets silence
         if (fireIncidents > prevFireCount) {

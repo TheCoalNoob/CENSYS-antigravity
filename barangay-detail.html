@@ -673,27 +673,26 @@
 
     function handleAlarm(filteredNodes) {
       const fireResult = clusterFires(filteredNodes, 100);
-      const fireIncidents = fireResult.totalIncidents;
       const fireNodeCount = fireResult.totalFireNodes;
       const banner = document.getElementById('alarmBanner');
 
       if (fireNodeCount > 0) {
         banner.classList.remove('alarm-hidden');
         document.getElementById('alarmBannerSub').textContent =
-          `${fireNodeCount} node(s) reporting fire in ${brgyInfo.name} (${fireIncidents} incident(s))`;
+          `${fireNodeCount} node(s) reporting fire in ${brgyInfo.name}`;
 
-        if (fireIncidents > prevFireCount) resetAlarmSilence();
-        if (!alarmSilenced && role === 'firestation') startAlarmSound();
+        if (fireNodeCount > prevFireCount) resetAlarmSilence();
+        if (!alarmSilenced) startAlarmSound();
       } else {
         banner.classList.add('alarm-hidden');
         stopAlarmSound();
         resetAlarmSilence();
       }
-      prevFireCount = fireIncidents;
+      prevFireCount = fireNodeCount;
 
-      const alarm = getBFPAlarmLevel(fireIncidents);
+      const alarm = getBFPAlarmLevel(fireNodeCount);
       const pageBadge = document.getElementById('pageBadge');
-      pageBadge.innerHTML = fireIncidents > 0
+      pageBadge.innerHTML = fireNodeCount > 0
         ? `<div class="alarm-level ${alarm.class}"><span>🔥</span> ${alarm.label}</div>`
         : `<div class="alarm-level alarm-level--none"><span>✅</span> All Clear</div>`;
     }
