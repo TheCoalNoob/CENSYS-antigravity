@@ -472,7 +472,7 @@
         document.getElementById('fireWarningTitle').textContent = `🔥 ${alarm.label} — ${fireCount} Fire Node(s)`;
         document.getElementById('fireWarningSub').textContent = 'Contact the San Nicolas Fire Substation immediately.';
 
-        if (fireCount > prevFireCount) resetAlarmSilence();
+        if (!_alarmFirstLoad && fireCount > prevFireCount) resetAlarmSilence();
         if (!alarmSilenced) startAlarmSound();
       } else {
         banner.classList.add('alarm-hidden');
@@ -480,6 +480,7 @@
         resetAlarmSilence();
       }
       prevFireCount = fireCount;
+      _alarmFirstLoad = false;
 
       updateMarkers(filteredNodes);
       renderNodeCards(filteredNodes);
@@ -488,6 +489,12 @@
     // =====================================================
     // FIREBASE LISTENER
     // =====================================================
+    // Restore silenced button state from session
+    if (alarmSilenced) {
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
+    }
+
     listenToNodes((allNodes) => {
       const filtered = {};
       Object.entries(allNodes).forEach(([key, node]) => {
