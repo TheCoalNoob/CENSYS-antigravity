@@ -299,7 +299,8 @@ let alarmAudioCtx = null;
 let alarmOscillator = null;
 let alarmGain = null;
 let alarmPlaying = false;
-let alarmSilenced = false;
+let alarmSilenced = sessionStorage.getItem('alarmSilenced') === 'true';
+let _alarmFirstLoad = true;
 
 function startAlarmSound() {
   if (alarmPlaying) return;
@@ -334,8 +335,8 @@ function stopAlarmSound() {
   if (alarmAudioCtx) { try { alarmAudioCtx.close(); } catch(e) {} alarmAudioCtx = null; }
 }
 
-function silenceAlarm() { alarmSilenced = true; stopAlarmSound(); }
-function resetAlarmSilence() { alarmSilenced = false; }
+function silenceAlarm() { alarmSilenced = true; sessionStorage.setItem('alarmSilenced', 'true'); stopAlarmSound(); }
+function resetAlarmSilence() { alarmSilenced = false; sessionStorage.removeItem('alarmSilenced'); }
 
 // =====================================================
 // Haversine Distance (meters)
