@@ -681,7 +681,7 @@
         document.getElementById('alarmBannerSub').textContent =
           `${fireNodeCount} node(s) reporting fire in ${brgyInfo.name}`;
 
-        if (fireNodeCount > prevFireCount) resetAlarmSilence();
+        if (!_alarmFirstLoad && fireNodeCount > prevFireCount) resetAlarmSilence();
         if (!alarmSilenced) startAlarmSound();
       } else {
         banner.classList.add('alarm-hidden');
@@ -689,6 +689,7 @@
         resetAlarmSilence();
       }
       prevFireCount = fireNodeCount;
+      _alarmFirstLoad = false;
 
       const alarm = getBFPAlarmLevel(fireNodeCount);
       const pageBadge = document.getElementById('pageBadge');
@@ -700,6 +701,12 @@
     // =====================================================
     // FIREBASE — filter by barangay
     // =====================================================
+    // Restore silenced button state from session
+    if (alarmSilenced && document.getElementById('silenceBtn').style.display !== 'none') {
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
+    }
+
     listenToNodes((allNodes) => {
       const filtered = {};
       Object.entries(allNodes).forEach(([key, node]) => {
