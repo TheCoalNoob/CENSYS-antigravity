@@ -790,8 +790,8 @@
         document.getElementById('alarmBannerSub').textContent =
           `${alarm.label}: ${totalFireNodes} fire node(s) detected. Respond immediately.`;
 
-        // New fire event resets silence
-        if (fireIncidents > prevFireCount) {
+        // New fire event resets silence (skip first-load to preserve cross-page silence)
+        if (!_alarmFirstLoad && fireIncidents > prevFireCount) {
           resetAlarmSilence();
         }
 
@@ -805,6 +805,7 @@
         resetAlarmSilence();
       }
       prevFireCount = fireIncidents;
+      _alarmFirstLoad = false;
 
       // ===== FIRE OUT NOTIFICATION =====
       // Show fire-out modal for barangays that have active fires
@@ -1105,6 +1106,12 @@
     // =====================================================
     // FIREBASE LISTENERS
     // =====================================================
+    // Restore silenced button state from session
+    if (alarmSilenced) {
+      document.getElementById('silenceBtn').textContent = 'Alarm Silenced';
+      document.getElementById('silenceBtn').disabled = true;
+    }
+
     listenToNodes(renderDashboard);
     listenToUnregisteredNodes(renderUnregNodes);
     listenToFireIncidents(renderIncidentLog);
